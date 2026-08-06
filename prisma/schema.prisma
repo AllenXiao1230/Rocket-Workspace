@@ -156,11 +156,15 @@ model DatabaseProperty {
   type       DatabasePropertyType @default(TEXT)
   options    Json?
   position   Int                  @default(0)
+  deletedAt  DateTime?
+  deletionBatchId String?
   databaseId String
   database   Database             @relation(fields: [databaseId], references: [id], onDelete: Cascade)
   createdAt  DateTime             @default(now())
   updatedAt  DateTime             @updatedAt
   @@index([databaseId, position])
+  @@index([databaseId, deletedAt])
+  @@index([deletionBatchId])
 }
 
 model DatabaseView {
@@ -232,6 +236,7 @@ model Document {
   deletedAt DateTime?
   deletionBatchId String?
   markdownHash String?
+  markdownBase String?
   updatedAt DateTime   @updatedAt
   createdAt DateTime   @default(now())
   attachments Attachment[]

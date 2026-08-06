@@ -34,7 +34,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   });
   await writeDocumentMarkdown(document, parsed.data.markdown ?? priorMarkdown ?? undefined);
   const markdownSnapshot = await readDocumentMarkdownSnapshot(document);
-  if (markdownSnapshot) await prisma.document.update({ where: { id: document.id }, data: { markdownHash: markdownSnapshot.contentHash } });
+  if (markdownSnapshot) await prisma.document.update({ where: { id: document.id }, data: { markdownHash: markdownSnapshot.contentHash, markdownBase: markdownSnapshot.markdown } });
   await prisma.auditEvent.create({ data: { userId: session.user.id, action: "document.updated", entity: "document", entityId: id } });
   const documents = await prisma.document.findMany({ where: { projectId: prior.projectId, deletedAt: null }, select: { id: true, parentId: true, position: true } });
   return NextResponse.json({ id: document.id, icon: document.icon, parentId: document.parentId, position: document.position, updatedAt: document.updatedAt, documents });

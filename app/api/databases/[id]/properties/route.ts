@@ -12,7 +12,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { id } = await params; const access = await databaseAccess(session.user.id, id);
   if (!access || !canWrite(access.membership.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const parsed = schema.safeParse(await request.json()); if (!parsed.success) return NextResponse.json({ error: "Invalid property" }, { status: 400 });
-  const max = await prisma.databaseProperty.aggregate({ where: { databaseId: id }, _max: { position: true } });
+  const max = await prisma.databaseProperty.aggregate({ where: { databaseId: id, deletedAt: null }, _max: { position: true } });
   const property = await prisma.databaseProperty.create({ data: { databaseId: id, name: parsed.data.name, type: parsed.data.type, options: parsed.data.options as Prisma.InputJsonValue | undefined, position: (max._max.position ?? -1) + 1 } });
   return NextResponse.json(property, { status: 201 });
 }

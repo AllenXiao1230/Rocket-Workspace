@@ -26,7 +26,7 @@
 2. 不要用破壞性 Git 指令覆蓋使用者工作；先檢查 `git status` 與差異。
 3. 文件、任務、Issue、BOM、測試與資料庫列使用軟刪除／回收桶。新增刪除流程時必須保留可還原性或明確取得使用者同意。
 4. 所有讀寫 API 都必須先認證，再依 `lib/permissions.ts` 檢查專案或工作空間角色。不可只依賴前端鎖定介面。
-5. Markdown 外部載入必須是明確使用者動作，不能靜默覆蓋線上協作內容。
+5. Markdown 外部載入必須是明確使用者動作，不能靜默覆蓋線上協作內容；雙方同時變更時以三方合併預覽與衝突標記保留兩份內容。
 6. 資料庫結構變更必須同時修改 Prisma schema 與新增 migration；不以 `prisma db push` 取代 migration。
 
 ## 開發流程
@@ -43,7 +43,7 @@
    git diff --check
    ```
 
-5. 修改容器執行內容時，再執行 `docker compose --progress plain build app`，重建 `app`，檢查健康狀態與登入頁 HTTP 回應。
+5. 修改容器執行內容時，再執行 `docker compose --progress plain build app collab backup`，重建相關服務，檢查健康狀態與登入頁 HTTP 回應。
 6. 需要推送 GitHub 時，先確認 diff、測試與目標分支；不要提交使用者資料。
 
 ## 功能設計原則
@@ -56,7 +56,7 @@
 
 ## 已知限制
 
-- Yjs/LevelDB 協作服務是單一節點設計；未實作多副本共享 awareness。
-- Rollup 設定精靈、資料庫拖放排序、關鍵路徑與自動排程尚未完成。
-- 沒有忘記密碼、2FA、SSO、電子郵件邀請、不可竄改稽核或完整端對端測試。
+- 協作服務透過 Redis 傳播 Yjs 更新與 awareness；正式水平擴容前仍須做多副本壓力與故障轉移演練。
+- 資料庫欄位採軟刪除，還原前必須保留欄位 ID，不能以重建同名欄位取代還原。
+- 沒有忘記密碼、2FA、SSO、電子郵件邀請、不可竄改稽核或完整瀏覽器端對端測試；AI 與外部整合也仍暫緩。
 - 見 `docs/functionality-audit.md` 與 `docs/markdown-editor-audit.md`，更新功能時必須同步更新相關文件。
