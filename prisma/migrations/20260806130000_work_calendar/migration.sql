@@ -1,0 +1,1 @@
+ALTER TABLE "Project" ADD COLUMN "workingDays" JSONB NOT NULL DEFAULT '[1,2,3,4,5]';

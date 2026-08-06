@@ -182,6 +182,7 @@ model Project {
   testPlans    TestPlan[]
   requirements Requirement[]
   calendarFeed CalendarFeed?
+  workingDays Json @default("[1,2,3,4,5]")
   createdAt   DateTime     @default(now())
   @@unique([workspaceId, code])
 }
