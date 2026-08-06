@@ -29,7 +29,7 @@ export async function GET(request: Request) {
     const access = await documentAccess(userId, documentId);
     if (!access) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     const attachments = await prisma.attachment.findMany({
-      where: { documentId },
+      where: { documentId, deletedAt: null },
       orderBy: { createdAt: "desc" },
       select: { id: true, filename: true, mimeType: true, size: true, createdAt: true },
     });
@@ -37,7 +37,7 @@ export async function GET(request: Request) {
   }
 
   if (!attachmentId) return NextResponse.json({ error: "documentId or id required" }, { status: 400 });
-  const attachment = await prisma.attachment.findUnique({ where: { id: attachmentId } });
+  const attachment = await prisma.attachment.findFirst({ where: { id: attachmentId, deletedAt: null } });
   if (!attachment?.documentId) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const access = await documentAccess(userId, attachment.documentId);
   if (!access) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
@@ -89,15 +89,15 @@ export async function DELETE(request: Request) {
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const attachmentId = new URL(request.url).searchParams.get("id");
   if (!attachmentId) return NextResponse.json({ error: "id required" }, { status: 400 });
-  const attachment = await prisma.attachment.findUnique({ where: { id: attachmentId } });
+  const attachment = await prisma.attachment.findFirst({ where: { id: attachmentId, deletedAt: null } });
   if (!attachment?.documentId) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const access = await documentAccess(userId, attachment.documentId);
   if (!access || !canWrite(access.membership.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   try {
-    await objectStorage.send(new DeleteObjectCommand({ Bucket: attachmentBucket, Key: attachment.storageKey }));
-    await prisma.attachment.delete({ where: { id: attachment.id } });
-    await prisma.auditEvent.create({ data: { action: "attachment.deleted", entity: "attachment", entityId: attachment.id, userId, metadata: { documentId: attachment.documentId, filename: attachment.filename } } });
+    const deletionBatchId = crypto.randomUUID();
+    await prisma.attachment.update({ where: { id: attachment.id }, data: { deletedAt: new Date(), deletionBatchId } });
+    await prisma.auditEvent.create({ data: { action: "attachment.trashed", entity: "attachment", entityId: attachment.id, userId, metadata: { documentId: attachment.documentId, filename: attachment.filename, deletionBatchId } } });
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ error: "Could not remove attachment. Please try again." }, { status: 502 });

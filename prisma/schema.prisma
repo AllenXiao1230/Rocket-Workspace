@@ -393,14 +393,18 @@ model TestRecord {
 }
 
 model Attachment {
-  id         String   @id @default(cuid())
-  filename   String
-  mimeType   String
-  size       Int
-  storageKey String   @unique
-  documentId String?
-  document   Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
-  createdAt  DateTime @default(now())
+  id              String    @id @default(cuid())
+  filename        String
+  mimeType        String
+  size            Int
+  storageKey      String    @unique
+  documentId      String?
+  document        Document? @relation(fields: [documentId], references: [id], onDelete: SetNull)
+  deletedAt       DateTime?
+  deletionBatchId String?
+  createdAt       DateTime  @default(now())
+  @@index([documentId, deletedAt])
+  @@index([deletionBatchId])
 }
 
 model AuditEvent {

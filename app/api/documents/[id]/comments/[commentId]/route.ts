@@ -23,6 +23,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const parsed = updateSchema.safeParse(await request.json());
   if (!parsed.success) return NextResponse.json({ error: "Invalid update" }, { status: 400 });
   const updated = await prisma.documentComment.update({ where: { id: comment.id }, data: { resolvedAt: parsed.data.resolved ? new Date() : null } });
+  await prisma.auditEvent.create({ data: { userId: session.user.id, action: parsed.data.resolved ? "document_comment.resolved" : "document_comment.reopened", entity: "document_comment", entityId: comment.id, metadata: { documentId: id } } });
   return NextResponse.json(updated);
 }
 
@@ -35,5 +36,6 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
   const canManage = comment.authorId === session.user.id || access.membership.role === "OWNER" || access.membership.role === "ADMIN";
   if (!canManage) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   await prisma.documentComment.delete({ where: { id: comment.id } });
+  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "document_comment.deleted", entity: "document_comment", entityId: comment.id, metadata: { documentId: id, authorId: comment.authorId } } });
   return NextResponse.json({ ok: true });
 }
