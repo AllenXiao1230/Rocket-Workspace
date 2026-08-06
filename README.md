@@ -80,6 +80,10 @@ Adjust `BACKUP_INTERVAL_HOURS` and `BACKUP_RETENTION_DAYS` in `.env`, then resta
 
 Workspace owners and administrators can also adjust the backup interval and retention from the in-app **設定中心**. The backup service checks these values every minute, so a new schedule applies within about one minute; deployment secrets remain server-only.
 
+### Security controls
+
+Owners and administrators can open **設定中心 → 安全與功能開關** to turn these local-server features on or off without exposing secrets: real-time collaboration, attachment uploads, Markdown downloads, web account provisioning, forced password changes for new accounts, password length, and login attempt limits. The settings are stored in the private `workspace-data/.rocket-workspace-settings.env` file and are excluded from Git. Turning a feature off blocks new operations but preserves existing data.
+
 ### Team members and task owners
 
 Open **團隊成員** in the left sidebar. Owners and administrators can add an existing login account by email, set its workspace role, and give it a display nickname. The nickname is shown first in the task module's **負責人** menu; the account identity remains the value stored in the database, so renaming someone does not break their assignments. Editors can assign task owners but cannot manage membership. Viewers can see assignments but cannot change them.
