@@ -23,7 +23,13 @@ const settingsSchema = z.object({
     loginMaxAttempts: z.number().int().min(1).max(30),
     loginWindowMinutes: z.number().int().min(1).max(1440),
   }).optional(),
+  ai: z.object({ enabled: z.boolean(), provider: z.enum(["OPENAI_COMPATIBLE", "OLLAMA"]), baseUrl: z.string().trim().max(2_000), model: z.string().trim().max(200), apiKey: z.string().max(10_000).optional() }).optional(),
+  integrations: z.object({ githubEnabled: z.boolean(), githubRepository: z.string().trim().max(200), githubToken: z.string().max(10_000).optional(), webhookEnabled: z.boolean(), webhookUrl: z.string().trim().max(2_000), webhookSecret: z.string().max(10_000).optional() }).optional(),
 });
+
+function publicRuntime(runtime: Awaited<ReturnType<typeof readRuntimeSettings>>) {
+  return { backup: runtime.backup, security: runtime.security, ai: { enabled: runtime.ai.enabled, provider: runtime.ai.provider, baseUrl: runtime.ai.baseUrl, model: runtime.ai.model, apiKeyConfigured: Boolean(runtime.ai.apiKey) }, integrations: { githubEnabled: runtime.integrations.githubEnabled, githubRepository: runtime.integrations.githubRepository, githubTokenConfigured: Boolean(runtime.integrations.githubToken), webhookEnabled: runtime.integrations.webhookEnabled, webhookUrl: runtime.integrations.webhookUrl, webhookSecretConfigured: Boolean(runtime.integrations.webhookSecret) } };
+}
 
 async function accessFor(projectId: string) {
   const session = await auth();
@@ -37,7 +43,8 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   if (!result) return NextResponse.json({ error: "找不到專案或尚未登入" }, { status: 404 });
   const workspace = await prisma.workspace.findUnique({ where: { id: result.access.project.workspaceId }, select: { id: true, name: true, slug: true } });
   const runtime = await readRuntimeSettings();
-  return NextResponse.json({ workspace, project: { id: result.access.project.id, name: result.access.project.name, code: result.access.project.code, description: result.access.project.description }, backup: { ...runtime.backup, ...(await readBackupStatus()) }, security: runtime.security, canManage: ["OWNER", "ADMIN"].includes(result.access.membership.role) });
+  const publicSettings = publicRuntime(runtime);
+  return NextResponse.json({ workspace, project: { id: result.access.project.id, name: result.access.project.name, code: result.access.project.code, description: result.access.project.description }, backup: { ...publicSettings.backup, ...(await readBackupStatus()) }, security: publicSettings.security, ai: publicSettings.ai, integrations: publicSettings.integrations, canManage: ["OWNER", "ADMIN"].includes(result.access.membership.role) });
 }
 
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -52,10 +59,11 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       prisma.project.update({ where: { id }, data: { name: input.data.projectName, code: input.data.projectCode, description: input.data.projectDescription === undefined ? undefined : input.data.projectDescription || null } }),
     ]);
     const runtime = await readRuntimeSettings();
-    await writeRuntimeSettings({ backup: { intervalHours: input.data.backupIntervalHours, retentionDays: input.data.backupRetentionDays }, security: input.data.security || runtime.security });
+    await writeRuntimeSettings({ backup: { intervalHours: input.data.backupIntervalHours, retentionDays: input.data.backupRetentionDays }, security: input.data.security || runtime.security, ai: input.data.ai ? { ...input.data.ai, apiKey: input.data.ai.apiKey?.trim() || runtime.ai.apiKey } : runtime.ai, integrations: input.data.integrations ? { ...input.data.integrations, githubToken: input.data.integrations.githubToken?.trim() || runtime.integrations.githubToken, webhookSecret: input.data.integrations.webhookSecret?.trim() || runtime.integrations.webhookSecret } : runtime.integrations });
     await prisma.auditEvent.create({ data: { userId: result.session.user.id, action: "workspace.settings_updated", entity: "project", entityId: id } });
     const savedRuntime = await readRuntimeSettings();
-    return NextResponse.json({ workspace: { id: workspace.id, name: workspace.name, slug: workspace.slug }, project: { id: project.id, name: project.name, code: project.code, description: project.description }, backup: { ...savedRuntime.backup, ...(await readBackupStatus()) }, security: savedRuntime.security, canManage: true });
+    const publicSettings = publicRuntime(savedRuntime);
+    return NextResponse.json({ workspace: { id: workspace.id, name: workspace.name, slug: workspace.slug }, project: { id: project.id, name: project.name, code: project.code, description: project.description }, backup: { ...publicSettings.backup, ...(await readBackupStatus()) }, security: publicSettings.security, ai: publicSettings.ai, integrations: publicSettings.integrations, canManage: true });
   } catch (error) {
     const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";
     return NextResponse.json({ error: code === "P2002" ? "此專案代碼已被使用" : "無法儲存設定" }, { status: code === "P2002" ? 409 : 500 });

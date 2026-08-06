@@ -2,7 +2,7 @@
 
 可自架、以繁體中文為主的團隊知識庫與專案工作空間。它將 Notion 風格文件、結構化資料庫、專案模組、即時協作與本機 Markdown 備份放在同一套 Docker Compose 服務中。
 
-> AI 整合目前依專案決定暫緩；本版本不需要、也不會讀取 OpenAI 或 Ollama 金鑰。
+> AI 與外部整合預設停用。未在設定中心明確啟用並填入服務資料前，系統不會向 OpenAI-compatible API、Ollama、GitHub 或 Webhook 發出請求。
 
 ## 已完成
 
@@ -14,6 +14,7 @@
 - **專案管理**：任務、Issue、BOM、測試紀錄可新增、編輯、軟刪除與還原；任務可指派團隊成員、設定多個前置任務，並阻止循環依賴。甘特圖支援拖拉日期、關鍵路徑、基線、資源負載與依前置任務自動順延。
 - **文件協作周邊**：留言串、回覆、解析、刪除、版本歷史與還原、MinIO 附件上傳／下載／刪除、站內通知。
 - **設定與維運**：明暗模式、主題配色、專案資訊、備份排程、安全與功能開關；PostgreSQL、Markdown、MinIO 附件定時備份及完整性驗證。
+- **AI 與外部整合**：可在設定中心設定 OpenAI-compatible API 或 Ollama，於「AI 與整合」頁面對話；GitHub Issue 為唯讀查詢，Webhook 可帶 HMAC SHA-256 簽章送出測試事件。服務與金鑰都預設留白、停用且不回顯。
 - **部署**：Docker Compose 一鍵啟動 Next.js、PostgreSQL、Redis、MinIO、Yjs 協作與備份服務；資料庫 migration 自動套用。
 
 ## 仍需加強／尚未完成
@@ -21,7 +22,7 @@
 這些項目尚未宣稱完成，適合列入後續迭代：
 
 1. **帳號與企業整合**：沒有忘記密碼信、邀請信、2FA、SSO、帳號停用、細粒度頁面分享或對外訪客流程。（依本輪範圍暫不處理）
-2. **AI 與外部整合**：OpenAI-compatible API、Ollama、MCP、GitHub／日曆等外部整合尚未實作。（依本輪範圍暫不處理）
+2. **進階外部整合**：目前提供 OpenAI-compatible、Ollama、GitHub Issue 與通用 Webhook；MCP、日曆雙向同步與 GitHub 寫入仍未實作。
 3. **營運驗證深度**：已加入單元測試、備份完整性檢查與隔離還原演練；實際多節點壓力／故障轉移與瀏覽器端對端測試仍應在正式擴容前執行。
 
 完整限制與改善方向請見 [docs/functionality-audit.md](docs/functionality-audit.md) 與 [docs/markdown-editor-audit.md](docs/markdown-editor-audit.md)。
@@ -96,6 +97,7 @@ docker compose exec backup restore-drill <backup-id>
 - 對外部署請以 TLS reverse proxy 代理 `app` 與 `collab`，並將 `NEXTAUTH_URL` 改為公開 HTTPS 網址、`NEXT_PUBLIC_COLLABORATION_URL` 改為對應的 `wss://`。
 - 不要將 PostgreSQL、Redis、MinIO 對公網暴露。Compose 預設只把 MinIO 與協作連接埠綁在本機。
 - **設定中心 → 安全與功能開關** 可關閉協作、附件、Markdown 下載、網頁帳號建立、強制首次改密碼與登入限速；設定檔會存於 Git 忽略的 `workspace-data/.rocket-workspace-settings.env`。
+- **帳號安全**與 AI／整合設定都預設關閉。設定頁的密鑰欄位只接受新值，既有值不會回傳至瀏覽器；留白會保留目前的本機值。
 - 關閉功能只阻止新操作，不會刪除既有資料。
 
 ## 開發與驗證

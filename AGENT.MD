@@ -6,7 +6,7 @@
 
 - 這是自架的團隊文件與專案管理系統，不是飛控、地面站或任何即時安全決策系統。
 - 文件的 Markdown 位置是 `workspace-data/documents/`；它是可讀的交換／備份格式。Tiptap JSON、資料庫記錄、附件、留言與版本歷史仍以 PostgreSQL/MinIO 為準。
-- AI 功能目前暫緩。不要新增或要求 OpenAI、Ollama 或任何 API 金鑰，除非使用者重新明確啟用此範圍。
+- AI 與外部整合預設停用。AI 金鑰、GitHub Token、Webhook 密鑰只能寫入 Git 忽略的 `workspace-data/.rocket-workspace-settings.env`，不得回傳至前端、寫入文件、日誌或 Git。
 
 ## 技術地圖
 
@@ -28,6 +28,7 @@
 4. 所有讀寫 API 都必須先認證，再依 `lib/permissions.ts` 檢查專案或工作空間角色。不可只依賴前端鎖定介面。
 5. Markdown 外部載入必須是明確使用者動作，不能靜默覆蓋線上協作內容；雙方同時變更時以三方合併預覽與衝突標記保留兩份內容。
 6. 資料庫結構變更必須同時修改 Prisma schema 與新增 migration；不以 `prisma db push` 取代 migration。
+7. AI、GitHub 與 Webhook API 必須先檢查工作空間權限與設定開關；未啟用時不可對外發出網路請求。
 
 ## 開發流程
 
