@@ -16,7 +16,7 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id, module } = await params; const access = await projectAccess(session.user.id, id); const kind = moduleSchema.safeParse(module);
   if (!access || !kind.success) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const data = kind.data === "tasks" ? await prisma.task.findMany({ where: { projectId: id }, include: { assignee: { select: { id: true, name: true, email: true } } }, orderBy: { createdAt: "desc" } }) : kind.data === "issues" ? await prisma.issue.findMany({ where: { projectId: id }, orderBy: { createdAt: "desc" } }) : kind.data === "bom" ? await prisma.bomItem.findMany({ where: { projectId: id }, orderBy: { createdAt: "desc" } }) : await prisma.testRecord.findMany({ where: { projectId: id }, orderBy: { createdAt: "desc" } });
+  const data = kind.data === "tasks" ? await prisma.task.findMany({ where: { projectId: id, deletedAt: null }, include: { assignee: { select: { id: true, name: true, email: true } } }, orderBy: { createdAt: "desc" } }) : kind.data === "issues" ? await prisma.issue.findMany({ where: { projectId: id, deletedAt: null }, orderBy: { createdAt: "desc" } }) : kind.data === "bom" ? await prisma.bomItem.findMany({ where: { projectId: id, deletedAt: null }, orderBy: { createdAt: "desc" } }) : await prisma.testRecord.findMany({ where: { projectId: id, deletedAt: null }, orderBy: { createdAt: "desc" } });
   return NextResponse.json(data);
 }
 export async function POST(request: Request, { params }: { params: Promise<{ id: string; module: string }> }) {

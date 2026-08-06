@@ -20,11 +20,11 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ p
           projects: {
             include: {
               documents: { where: { deletedAt: null }, orderBy: [{ position: "asc" }, { createdAt: "asc" }] },
-              databases: { include: { properties: { orderBy: { position: "asc" } }, views: { orderBy: { position: "asc" } }, rows: { orderBy: { position: "asc" } }, templates: { orderBy: { name: "asc" } }, automations: { orderBy: { createdAt: "desc" } } }, orderBy: { createdAt: "asc" } },
-              tasks: { include: { assignee: { select: { id: true, name: true, email: true } } } },
-              issues: true,
-              bomItems: true,
-              testRecords: true,
+              databases: { include: { properties: { orderBy: { position: "asc" } }, views: { orderBy: { position: "asc" } }, rows: { where: { deletedAt: null }, orderBy: { position: "asc" } }, templates: { orderBy: { name: "asc" } }, automations: { orderBy: { createdAt: "desc" } } }, orderBy: { createdAt: "asc" } },
+              tasks: { where: { deletedAt: null }, include: { assignee: { select: { id: true, name: true, email: true } } } },
+              issues: { where: { deletedAt: null } },
+              bomItems: { where: { deletedAt: null } },
+              testRecords: { where: { deletedAt: null } },
             },
           },
         },
