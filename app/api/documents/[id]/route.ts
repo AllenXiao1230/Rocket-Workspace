@@ -14,6 +14,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!canWrite(access.membership.role)) return NextResponse.json({ error: "Read-only role" }, { status: 403 });
   const parsed = updateSchema.safeParse(await request.json()); if (!parsed.success) return NextResponse.json({ error: "Invalid document" }, { status: 400 });
   const prior = access.document; const priorMarkdown = await readDocumentMarkdown(prior);
+  if (prior.lockedById && prior.lockedById !== session.user.id && !["OWNER", "ADMIN"].includes(access.membership.role)) return NextResponse.json({ error: "文件已被其他成員鎖定" }, { status: 423 });
   if (parsed.data.parentId === id) return NextResponse.json({ error: "頁面不能成為自己的子頁面" }, { status: 400 });
   if (parsed.data.parentId) {
     const parent = await prisma.document.findFirst({ where: { id: parsed.data.parentId, projectId: prior.projectId, deletedAt: null } });
@@ -47,6 +48,8 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
   const childMap = documents.reduce<Record<string, string[]>>((map, document) => { if (document.parentId) (map[document.parentId] ||= []).push(document.id); return map; }, {});
   const removedIds: string[] = []; const pending = [id];
   while (pending.length) { const current = pending.pop(); if (!current) continue; removedIds.push(current); pending.push(...(childMap[current] || [])); }
+  const locked = await prisma.document.findFirst({ where: { id: { in: removedIds }, lockedById: { not: null }, NOT: { lockedById: session.user.id } } });
+  if (locked && !["OWNER", "ADMIN"].includes(access.membership.role)) return NextResponse.json({ error: "此頁面或子頁面已被其他成員鎖定" }, { status: 423 });
   const deletionBatchId = crypto.randomUUID();
   await prisma.document.updateMany({ where: { id: { in: removedIds } }, data: { deletedAt: new Date(), deletionBatchId } });
   await prisma.auditEvent.create({ data: { userId: session.user.id, action: "document.trashed", entity: "document", entityId: id, workspaceId: access.document.project.workspaceId, projectId: access.document.projectId, metadata: { deletionBatchId, descendantCount: Math.max(0, removedIds.length - 1) } } });
