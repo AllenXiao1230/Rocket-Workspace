@@ -45,11 +45,10 @@ export async function GET(request: Request) {
   try {
     const object = await objectStorage.send(new GetObjectCommand({ Bucket: attachmentBucket, Key: attachment.storageKey }));
     if (!object.Body) return NextResponse.json({ error: "Attachment data unavailable" }, { status: 404 });
-    const bytes = await object.Body.transformToByteArray();
-    return new NextResponse(Buffer.from(bytes), {
+    const stream = object.Body.transformToWebStream();
+    return new NextResponse(stream, {
       headers: {
         "Content-Type": attachment.mimeType || "application/octet-stream",
-        "Content-Length": String(bytes.byteLength),
         "Content-Disposition": `attachment; filename*=UTF-8''${encodeURIComponent(attachment.filename)}`,
         "Cache-Control": "private, no-store",
       },
