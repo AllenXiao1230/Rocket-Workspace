@@ -13,6 +13,7 @@
 - **資料庫**：欄位型別、表格／看板／行事曆／時間軸／圖庫／清單／表單檢視、篩選、排序、關聯、Rollup、公式、模板、自動化、欄列拖放排序、列回收桶與欄位回收桶。
 - **專案管理**：任務、Issue、BOM、測試紀錄可新增、編輯、軟刪除與還原；任務可指派團隊成員、設定多個前置任務，並阻止循環依賴。甘特圖支援拖拉日期、關鍵路徑、基線、資源負載與依前置任務自動順延。
 - **文件協作周邊**：留言串、回覆、解析、刪除、版本歷史與還原、MinIO 附件上傳／下載／刪除、站內通知。
+- **日曆同步**：每個專案可在設定中心建立可輪替、可撤銷的標準 iCalendar（`.ics`）訂閱網址；Google Calendar、Apple Calendar、Outlook 等可唯讀同步有日期的任務與測試紀錄，權杖只儲存 SHA-256 雜湊。
 - **設定與維運**：明暗模式、主題配色、專案資訊、工作空間隔離的安全／功能開關與管理者操作紀錄；主機備份排程僅由系統管理員調整，並備份 PostgreSQL、Markdown、MinIO 附件及完整性資訊。
 - **AI 與外部整合**：可在設定中心設定 OpenAI-compatible API 或 Ollama，於「AI 與整合」頁面對話；GitHub Issue 為唯讀查詢，Webhook 可帶 HMAC SHA-256 簽章送出測試事件。每個工作空間的密鑰以 AES-256-GCM 加密存於 PostgreSQL、永不回顯；外連一律驗證 HTTPS 與私有網路位址，Ollama 僅允許受信任的內部主機。
 - **部署**：Docker Compose 一鍵啟動 Next.js、PostgreSQL、Redis、MinIO、Yjs 協作與備份服務；資料庫 migration 自動套用。
@@ -22,8 +23,8 @@
 這些項目尚未宣稱完成，適合列入後續迭代：
 
 1. **帳號與企業整合**：沒有忘記密碼信、邀請信、2FA、SSO、帳號停用、細粒度頁面分享或對外訪客流程。（依本輪範圍暫不處理）
-2. **進階外部整合**：目前提供 OpenAI-compatible、Ollama、GitHub Issue 與通用 Webhook；MCP、日曆雙向同步與 GitHub 寫入仍未實作。
-3. **營運驗證深度**：已加入單元測試、備份完整性檢查與隔離還原演練；實際多節點壓力／故障轉移與瀏覽器端對端測試仍應在正式擴容前執行。
+2. **進階外部整合**：目前提供 OpenAI-compatible、Ollama、GitHub Issue、通用 Webhook 與 iCalendar 唯讀訂閱；MCP、CalDAV／Google／Outlook 的雙向寫入與 GitHub 寫入仍未實作。
+3. **營運驗證深度**：已加入單元測試、備份完整性檢查、隔離還原演練及可重複執行的三節點 Yjs 壓測；跨可用區故障轉移與瀏覽器端端對端測試仍應在正式擴容前執行。
 
 完整限制與改善方向請見 [docs/functionality-audit.md](docs/functionality-audit.md) 與 [docs/markdown-editor-audit.md](docs/markdown-editor-audit.md)。
 
@@ -55,6 +56,7 @@
 - 文件內以 `/` 開啟區塊選單；使用 **MD 原始碼** 編輯 Markdown，使用 **讀取檔案** 明確載入外部修改。
 - 到 **任務** 模組按「啟用編輯」，在 **前置任務** 欄位以 Command（Windows/Linux：Ctrl）多選前置任務。
 - 到 **設定中心** 管理主題、專案、團隊帳號、安全開關與該工作空間的外部整合。只有擁有者與管理員可調整工作空間設定；bootstrap 管理員同時是系統管理員，可調整主機備份排程。
+- 到 **設定中心 → 專案日曆同步** 產生訂閱網址，立刻複製到外部日曆的「透過網址訂閱」功能。網址只會顯示一次；若外流或需要換用日曆帳號，按「輪替訂閱網址」。停用後舊訂閱會回傳不存在。
 
 ## 架構與資料位置
 
@@ -67,6 +69,7 @@
 Redis：登入限速與未來背景工作／橫向協作預留
 workspace-data/documents：可讀 Markdown 文件
 backups：資料庫、Markdown 與附件備份
+`/api/calendar/<權杖>.ics`：專案任務／測試紀錄的唯讀 iCalendar 訂閱
 ```
 
 `workspace-data/`、`backups/`、附件與 `.env` 都不應提交到 Git。這些路徑已由 `.gitignore` 排除。
@@ -102,6 +105,29 @@ docker compose exec backup restore-drill <backup-id>
 - **帳號安全**與 AI／整合設定都預設關閉。設定頁的密鑰欄位只接受新值，既有值不會回傳至瀏覽器；留白會保留目前的加密值。系統不再讀取舊版明文 AI／整合設定，舊的 `.rocket-workspace-settings.env` 亦會從工作區備份排除。
 - `WORKSPACE_SETTINGS_ENCRYPTION_KEY` 可設定為獨立 32 字元以上的密鑰；留白時會使用 `AUTH_SECRET` 衍生加密金鑰。請勿遺失此值，否則既有整合密鑰無法解密。
 - 關閉功能只阻止新操作，不會刪除既有資料。
+- 日曆訂閱網址是高熵的唯讀 bearer 權杖，不要求外部 OAuth，也不會儲存 Google／Microsoft 密碼。把網址視為敏感連結；若外流請在設定中心輪替或停用。外部日曆的重新整理頻率由該服務決定，Rocket Workspace 不會直接寫回外部日曆。
+
+## 三節點協作壓測
+
+正式部署或變更協作服務前，可在同一個 Docker 網路啟動三個獨立 Yjs 節點，讓 36 個客戶端平均分布連線並驗證每一筆更新都會跨 Redis 傳遞到所有其他客戶端。測試預設要求 p95 傳播延遲不超過 3 秒；輸出為單行 JSON，`"result":"PASS"` 才算通過。
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.loadtest.yml \
+  up --build --abort-on-container-exit --exit-code-from collab-loadtest collab-loadtest
+docker compose -f docker-compose.yml -f docker-compose.loadtest.yml \
+  rm -sf collab-loadtest collab-node-1 collab-node-2 collab-node-3
+docker volume rm rocketworkspace_collab-loadtest-node-1 rocketworkspace_collab-loadtest-node-2 rocketworkspace_collab-loadtest-node-3
+```
+
+可在 `.env` 設定下列門檻，但不要將 `.env` 提交：
+
+```dotenv
+COLLAB_LOADTEST_CLIENTS=36
+COLLAB_LOADTEST_TIMEOUT_MS=30000
+COLLAB_LOADTEST_MAX_P95_MS=3000
+```
+
+壓測會使用暫時的隨機文件 ID，不會讀取或修改 PostgreSQL 的專案文件；清除命令只移除三個壓測節點，不會停止正式的 `app`、`postgres`、`redis`、`minio` 或 `backup` 服務。此驗證涵蓋多節點同步與延遲，不等同跨主機、跨區域或反向代理的完整容錯演練。
 
 ## 開發與驗證
 

@@ -16,12 +16,15 @@ export const accentPresets: Record<Exclude<AccentPreset, "custom">, Omit<Appeara
   graphite: { label: "石墨灰", primary: "#8d9ba2", deep: "#384850", highlight: "#dfe8e6", warning: "#d9965d" },
 };
 const fallbackAppearance: Appearance = { preset: "rocket", ...accentPresets.rocket };
+const themeEvent = "rocket-workspace-theme-change";
+const appearanceEvent = "rocket-workspace-appearance-change";
+const colorPattern = /^#[0-9a-f]{6}$/i;
 
 export function getStoredAppearance(): Appearance {
   if (typeof window === "undefined") return fallbackAppearance;
   try {
     const stored = JSON.parse(window.localStorage.getItem(appearanceKey) || "") as Partial<Appearance>;
-    if (![stored.primary, stored.deep, stored.highlight, stored.warning].every((value) => typeof value === "string")) return fallbackAppearance;
+    if (![stored.primary, stored.deep, stored.highlight, stored.warning].every((value) => typeof value === "string" && colorPattern.test(value))) return fallbackAppearance;
     return { preset: stored.preset || "custom", primary: stored.primary!, deep: stored.deep!, highlight: stored.highlight!, warning: stored.warning! };
   } catch { return fallbackAppearance; }
 }
@@ -34,6 +37,14 @@ export function applyAppearance(appearance: Appearance) {
   root.style.setProperty("--acid", appearance.highlight);
   root.style.setProperty("--orange", appearance.warning);
   window.localStorage.setItem(appearanceKey, JSON.stringify(appearance));
+  window.dispatchEvent(new CustomEvent(appearanceEvent, { detail: appearance }));
+}
+
+export function applyTheme(theme: Theme) {
+  if (typeof window === "undefined") return;
+  document.documentElement.dataset.theme = theme;
+  window.localStorage.setItem(storageKey, theme);
+  window.dispatchEvent(new CustomEvent(themeEvent, { detail: theme }));
 }
 
 export function ThemeToggle() {
@@ -41,11 +52,14 @@ export function ThemeToggle() {
   useEffect(() => {
     const saved = window.localStorage.getItem(storageKey) as Theme | null;
     const next = saved === "dark" || (!saved && window.matchMedia("(prefers-color-scheme: dark)").matches) ? "dark" : "light";
-    setTheme(next); document.documentElement.dataset.theme = next; applyAppearance(getStoredAppearance());
+    setTheme(next); applyTheme(next); applyAppearance(getStoredAppearance());
+    const onTheme = (event: Event) => setTheme((event as CustomEvent<Theme>).detail);
+    window.addEventListener(themeEvent, onTheme);
+    return () => window.removeEventListener(themeEvent, onTheme);
   }, []);
   function toggle() {
     const next: Theme = theme === "dark" ? "light" : "dark";
-    setTheme(next); document.documentElement.dataset.theme = next; window.localStorage.setItem(storageKey, next);
+    setTheme(next); applyTheme(next);
   }
   return <button className="theme-toggle" type="button" onClick={toggle} aria-label={theme === "dark" ? "切換為淺色模式" : "切換為暗色模式"} title={theme === "dark" ? "淺色模式" : "暗色模式"}>{theme === "dark" ? "☀ 淺色" : "◐ 暗色"}</button>;
 }

@@ -1,0 +1,74 @@
+# Formal multi-node collaboration validation. This file is intentionally an
+# opt-in override; it never changes normal production deployment.
+services:
+  collab-node-1:
+    image: rocketworkspace-collab
+    build: .
+    env_file: .env
+    command: pnpm collab
+    environment:
+      YPERSISTENCE: /collab-data
+      COLLABORATION_INSTANCE_ID: loadtest-node-1
+    volumes: ["collab-loadtest-node-1:/collab-data"]
+    depends_on:
+      redis: { condition: service_started }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:1234/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  collab-node-2:
+    image: rocketworkspace-collab
+    build: .
+    env_file: .env
+    command: pnpm collab
+    environment:
+      YPERSISTENCE: /collab-data
+      COLLABORATION_INSTANCE_ID: loadtest-node-2
+    volumes: ["collab-loadtest-node-2:/collab-data"]
+    depends_on:
+      redis: { condition: service_started }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:1234/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  collab-node-3:
+    image: rocketworkspace-collab
+    build: .
+    env_file: .env
+    command: pnpm collab
+    environment:
+      YPERSISTENCE: /collab-data
+      COLLABORATION_INSTANCE_ID: loadtest-node-3
+    volumes: ["collab-loadtest-node-3:/collab-data"]
+    depends_on:
+      redis: { condition: service_started }
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:1234/"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  collab-loadtest:
+    image: rocketworkspace-app
+    build: .
+    env_file: .env
+    command: pnpm loadtest:collab
+    environment:
+      COLLAB_URLS: ws://collab-node-1:1234,ws://collab-node-2:1234,ws://collab-node-3:1234
+      COLLAB_LOADTEST_CLIENTS: ${COLLAB_LOADTEST_CLIENTS:-36}
+      COLLAB_LOADTEST_TIMEOUT_MS: ${COLLAB_LOADTEST_TIMEOUT_MS:-30000}
+      COLLAB_LOADTEST_MAX_P95_MS: ${COLLAB_LOADTEST_MAX_P95_MS:-3000}
+    depends_on:
+      collab-node-1: { condition: service_healthy }
+      collab-node-2: { condition: service_healthy }
+      collab-node-3: { condition: service_healthy }
+    restart: "no"
+
+volumes:
+  collab-loadtest-node-1:
+  collab-loadtest-node-2:
+  collab-loadtest-node-3:

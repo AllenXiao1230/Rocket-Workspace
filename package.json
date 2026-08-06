@@ -21,7 +21,8 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "documents:sync": "tsx scripts/sync-markdown.ts",
-    "collab": "node apps/collab-server/index.mjs"
+    "collab": "node apps/collab-server/index.mjs",
+    "loadtest:collab": "node scripts/collab-loadtest.mjs"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.799.0",
