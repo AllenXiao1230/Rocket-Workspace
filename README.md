@@ -1,201 +1,127 @@
 # Rocket Workspace
 
-Self-hosted, Notion-style project workspace for teams. This MVP deliberately starts with the collaboration and evidence trail that a hardware programme needs: structured project space, nested documents, authenticated access, role checks, auditable module records, attachment storage, and real-time text synchronization.
+可自架、以繁體中文為主的團隊知識庫與專案工作空間。它將 Notion 風格文件、結構化資料庫、專案模組、即時協作與本機 Markdown 備份放在同一套 Docker Compose 服務中。
 
-## License
+> AI 整合目前依專案決定暫緩；本版本不需要、也不會讀取 OpenAI 或 Ollama 金鑰。
 
-Rocket Workspace is licensed under [AGPL-3.0-or-later](LICENSE). In particular, modified versions offered to users over a network must also offer their corresponding source code. Do not commit personal documents, backups, attachments, or secrets; see [CONTRIBUTING.md](CONTRIBUTING.md).
+## 已完成
 
-AI is intentionally **out of scope for this version**. No OpenAI key is required, stored, or used.
+- **工作空間與權限**：登入、`OWNER`／`ADMIN`／`EDITOR`／`VIEWER` 角色、專案空間、成員名單、暱稱、所屬分組、職位與使用者 Emoji 頭像。
+- **文件工作區**：樹狀頁面、子頁面、Emoji 頁面圖示、展開／收合、拖放排序與移動、複製、回收桶與還原。
+- **編輯與協作**：Tiptap 區塊編輯、斜線選單、浮動表格工具、右鍵選單、連結、待辦、程式碼、引用、表格、復原／重做；Yjs 即時同步、協作游標、離線 IndexedDB 與單一協作服務的 LevelDB 持久化。
+- **Markdown 檔案**：每份文件同步至 `workspace-data/documents/`；可原始碼編輯、讀取外部修改、下載 `.md`，寫入採原子更名。Markdown 為交換與備份格式，進階工作區資料仍以 PostgreSQL 為準。
+- **資料庫**：欄位型別、表格／看板／行事曆／時間軸／圖庫／清單／表單檢視、篩選、排序、關聯、公式、模板、自動化與列回收桶。
+- **專案管理**：任務、Issue、BOM、測試紀錄可新增、編輯、軟刪除與還原；任務可指派團隊成員、設定多個前置任務，並阻止循環依賴。甘特圖會提示未完成的前置任務。
+- **文件協作周邊**：留言串、回覆、解析、刪除、版本歷史與還原、MinIO 附件上傳／下載／刪除、站內通知。
+- **設定與維運**：明暗模式、主題配色、專案資訊、備份排程、安全與功能開關；PostgreSQL、Markdown、MinIO 附件定時備份及完整性驗證。
+- **部署**：Docker Compose 一鍵啟動 Next.js、PostgreSQL、Redis、MinIO、Yjs 協作與備份服務；資料庫 migration 自動套用。
 
-## Included MVP
+## 仍需加強／尚未完成
 
-- **Workspace, project, and roles**: `OWNER`, `ADMIN`, `EDITOR`, and `VIEWER`; writes are checked server-side. Owners and administrators can manage members, assign a display nickname, and set roles.
-- **Project spaces**: a workspace can contain multiple projects; use the project selector in the left panel to change context without exposing projects outside the signed-in workspace.
-- **Notion-style pages**: project-scoped document tree, one-click child pages, rich Tiptap content, tables, task lists, and links. Every page is mirrored as a human-readable Markdown file in `workspace-data/documents/`, ready for backup or Git.
-- **Markdown workflow**: source editor, protected file reload, Markdown copy/download, atomic file writes, and formatting tools for headings, lists, quotes, code, links, tables, and task lists.
-- **Database engine**: typed properties including multi-select, relations, rollups, formulas, unique IDs, timestamps, people, and files; persistent Table, Board, Calendar, Timeline, Gallery, and List views.
-- **Workflow controls**: database templates, row-triggered automation rules, project search, page comments, version history with restore, and in-app notifications.
-- **Real-time editing**: Tiptap + Yjs + a protected WebSocket service. A short-lived token is only issued after the application has checked membership.
-- **Login**: Auth.js credentials login, with the first owner safely supplied through environment variables during seed.
-- **Team account provisioning**: owners and administrators can create a member account in the team page; the new member is forced to replace their initial password on first login.
-- **Project modules**: Tasks, Issues, BOM, and Test Records are modelled in PostgreSQL, shown in the workspace, and exposed through role-protected APIs. A task has one optional responsible member, selected from the active workspace team.
-- **Attachments**: MinIO object storage is initialized automatically; a protected multipart upload endpoint stores attachment metadata in PostgreSQL.
-- **Scheduled backup**: PostgreSQL, Markdown documents, and MinIO attachments are archived locally on a regular schedule with retention.
-- **Audit base**: all document writes create an `AuditEvent`; the schema is ready for module-level audit events as the UI grows.
+這些項目尚未宣稱完成，適合列入後續迭代：
 
-## Architecture
+1. **協作水平擴充**：目前協作持久化適合單一 `collab` 容器；多副本需改用共享的 Yjs provider 與 awareness。
+2. **外部 Markdown 衝突處理**：已有手動讀取檔案，但尚無檔案監看、內容比較、三方合併或保留兩份流程。
+3. **資料庫進階體驗**：關聯可用；Rollup 設定精靈、欄位／列拖放排序、完整欄位設定與復原欄位刪除仍未完成。
+4. **任務規劃進階功能**：已有相依關係與甘特阻塞提示，但尚無關鍵路徑、資源負載、基線、拖拉時程與自動排程。
+5. **帳號與企業整合**：沒有忘記密碼信、邀請信、2FA、SSO、帳號停用、細粒度頁面分享或對外訪客流程。
+6. **稽核與測試深度**：已有事件基礎與少量單元測試，但缺少不可竄改稽核、完整前後差異、端對端測試、壓力測試與備份還原演練。
+7. **AI 與外部整合**：OpenAI-compatible API、Ollama、MCP、GitHub／日曆等外部整合尚未實作。
 
-```text
-Browser (Next.js + Tiptap)
-  ├─ HTTPS → Next.js app → Auth.js / permission checks / Prisma → PostgreSQL
-  ├─ WSS  → Yjs collaboration server (short-lived document token)
-  └─ uploads → Next.js app → MinIO (object bytes) + PostgreSQL (metadata)
+完整限制與改善方向請見 [docs/functionality-audit.md](docs/functionality-audit.md) 與 [docs/markdown-editor-audit.md](docs/markdown-editor-audit.md)。
 
-Redis is provisioned for presence, jobs, rate limits, and collaborative scaling.
-```
+## 快速啟動
 
-### Markdown documents in the project folder
-
-`workspace-data/documents/` is bind-mounted into the application container. Each file has YAML front matter for its stable ID, title, project, parent page, and update time, followed by the Markdown body. The editor writes the Markdown file whenever it saves, and reads the Markdown version when opening a page; PostgreSQL keeps a Tiptap JSON checkpoint for real-time collaboration and fast rendering. On startup, only missing Markdown files are created, so existing files are safe to edit, copy, back up, or version with Git.
-
-The `Document.content` JSON is the durable checkpoint. Yjs distributes live changes and the editor saves a debounced JSON checkpoint to PostgreSQL. For multi-replica collaboration, add a Redis-backed Yjs persistence/awareness adapter before scaling the `collab` service horizontally.
-
-Use **MD 原始碼** in a document to edit its Markdown directly, **讀取檔案** to intentionally load an externally edited file, or **下載 .md** to export it with its front matter. The attachment panel supports permission-checked upload, download, and removal; set a size limit or optional file-type allow-list in `.env`. Markdown is an interchange and backup format: comments, revision history, attachments, database records, and some advanced editor structure remain in PostgreSQL. See [`docs/markdown-editor-audit.md`](docs/markdown-editor-audit.md) for known limits and the production hardening roadmap.
-
-Deleting a document now moves it, including its active child pages, into the **回收桶** instead of permanently removing it. Restoring a batch returns its original hierarchy and keeps its Markdown file, attachments, comments, and revision history.
-
-## Start with Docker Compose
-
-1. Copy the example configuration and choose unique secrets:
+1. 建立設定檔：
 
    ```bash
    cp .env.example .env
    ```
 
-2. Change at least `AUTH_SECRET`, `MINIO_SECRET_KEY`, `BOOTSTRAP_ADMIN_EMAIL`, and `BOOTSTRAP_ADMIN_PASSWORD` in `.env`. Do not commit this file.
+2. 在 `.env` 至少改掉 `AUTH_SECRET`、`MINIO_SECRET_KEY`、`BOOTSTRAP_ADMIN_EMAIL`、`BOOTSTRAP_ADMIN_PASSWORD`。
 
-3. Start the stack:
+3. 啟動：
 
    ```bash
-   docker compose up --build
+   docker compose up --build -d
    ```
 
-4. Open `http://localhost:3000` and log in with the bootstrap administrator account. The seed creates the `Rocket Workspace` and `Rocket 2027` sample project exactly once.
+4. 開啟 `http://localhost:3000`，以 bootstrap 管理員帳號登入。
 
-MinIO Console is available at `http://localhost:9001`. It is infrastructure administration, not the normal user interface.
+首次啟動會建立 `Rocket Workspace` 與範例專案。MinIO 管理介面僅供基礎設施管理，位於 `http://localhost:9001`；請使用 `.env` 中的 `MINIO_ACCESS_KEY` 與 `MINIO_SECRET_KEY` 登入。
 
-### Scheduled backup
+## 日常使用
 
-The `backup` service creates one backup when the stack starts, then repeats at the configured interval. The default is every 24 hours and it keeps 14 days. Backup files stay on the host in `backups/` and are deliberately excluded from Git because they can contain project data and database records.
+- 在側邊欄建立、拖放或右鍵管理文件；文件會以 `.md` 同步到 `workspace-data/documents/`。
+- 文件內以 `/` 開啟區塊選單；使用 **MD 原始碼** 編輯 Markdown，使用 **讀取檔案** 明確載入外部修改。
+- 到 **任務** 模組按「啟用編輯」，在 **前置任務** 欄位以 Command（Windows/Linux：Ctrl）多選前置任務。
+- 到 **設定中心** 管理主題、專案、團隊帳號、備份與安全開關。只有擁有者與管理員可調整工作空間設定。
 
-| Folder | Contents |
-| --- | --- |
-| `backups/database/` | PostgreSQL custom-format dumps (`.dump`) |
-| `backups/workspace/` | Markdown documents and local workspace files (`.tar.gz`) |
-| `backups/attachments/` | MinIO attachments exported through the storage API (`.tar.gz`) |
-| `backups/status/` | Latest successful backup ID, failure marker, manifest, and SHA-256 checksums |
-
-Adjust `BACKUP_INTERVAL_HOURS` and `BACKUP_RETENTION_DAYS` in `.env`, then restart the stack for the new schedule. Keep the `backups/` folder on a disk that is included in your device or off-site backup plan; a backup stored only on the same disk does not protect against disk loss.
-
-Workspace owners and administrators can also adjust the backup interval and retention from the in-app **設定中心**. The backup service checks these values every minute, so a new schedule applies within about one minute; deployment secrets remain server-only.
-
-### Security controls
-
-Owners and administrators can open **設定中心 → 安全與功能開關** to turn these local-server features on or off without exposing secrets: real-time collaboration, attachment uploads, Markdown downloads, web account provisioning, forced password changes for new accounts, password length, and login attempt limits. The settings are stored in the private `workspace-data/.rocket-workspace-settings.env` file and are excluded from Git. Turning a feature off blocks new operations but preserves existing data.
-
-### Team members and task owners
-
-Open **團隊成員** in the left sidebar. Owners and administrators can add an existing login account by email, set its workspace role, and give it a display nickname. The nickname is shown first in the task module's **負責人** menu; the account identity remains the value stored in the database, so renaming someone does not break their assignments. Editors can assign task owners but cannot manage membership. Viewers can see assignments but cannot change them.
-
-To check the most recent backup, read `backups/status/last-success.txt`. Its matching checksum file in `backups/status/` verifies the three archive files.
-
-To validate a backup without changing the live database, run the following from the project folder (replace the ID with `last-success.txt`):
-
-```bash
-docker compose exec backup verify-backup 20260806T021936Z
-```
-
-This checks checksums, both archives, and the PostgreSQL dump format. It is an integrity check, not a destructive restore drill; restore into a separate environment before using a backup for disaster recovery.
-
-For a network deployment, put the `app` and `collab` services behind a TLS reverse proxy, set `NEXTAUTH_URL` to the public HTTPS address, and set `NEXT_PUBLIC_COLLABORATION_URL` to its matching `wss://` endpoint. Do not expose PostgreSQL, Redis, or MinIO to the public Internet.
-
-## Development
-
-Requires Node.js 22+ and pnpm.
-
-```bash
-cp .env.example .env
-pnpm install
-pnpm db:generate
-pnpm db:push
-pnpm db:seed
-pnpm dev
-```
-
-In a second terminal, run `pnpm collab`. Set `DATABASE_URL` to `localhost` rather than `postgres` when PostgreSQL is running outside Compose.
-
-## Data model
-
-The authoritative Prisma schema is [`prisma/schema.prisma`](prisma/schema.prisma). Its main relationships are:
+## 架構與資料位置
 
 ```text
-User ──< Membership >── Workspace ──< Project
-Project ──< Document (self-referencing parent/children tree)
-Project ──< Database ──< DatabaseProperty | DatabaseView | DatabaseRow | DatabaseTemplate | DatabaseAutomation
-Project ──< Task | Issue | BomItem | TestRecord
-Document ──< Attachment (MinIO object key)
-Document ──< DocumentComment | DocumentRevision
-User ──< Notification
-User ──< AuditEvent
+瀏覽器
+  ├─ Next.js / Auth.js / Prisma ────────────── PostgreSQL
+  ├─ Yjs WebSocket（短效文件權杖）──────────── collab + LevelDB
+  └─ 附件 API ─────────────────────────────── MinIO
+
+Redis：登入限速與未來背景工作／橫向協作預留
+workspace-data/documents：可讀 Markdown 文件
+backups：資料庫、Markdown 與附件備份
 ```
 
-### Module APIs
+`workspace-data/`、`backups/`、附件與 `.env` 都不應提交到 Git。這些路徑已由 `.gitignore` 排除。
 
-All routes require an authenticated project member; `POST` also requires `OWNER`, `ADMIN`, or `EDITOR`.
+## 備份與還原驗證
 
-| Route | Purpose |
+備份服務啟動後會先執行一次，之後依 `BACKUP_INTERVAL_HOURS`（預設 24）排程，並依 `BACKUP_RETENTION_DAYS`（預設 14）保留。檔案存於：
+
+| 路徑 | 內容 |
 | --- | --- |
-| `POST /api/projects/:id/documents` | Create a root or child document |
-| `PATCH /api/documents/:id` | Persist title or Tiptap JSON |
-| `POST /api/documents/:id/collaboration-token` | Obtain a short-lived, document-scoped Yjs token |
-| `POST /api/projects/:id/databases` | Create a database with a default schema and table view |
-| `PATCH /api/databases/:id` | Rename a database |
-| `POST /api/databases/:id/properties` | Add a typed database property |
-| `PATCH /api/databases/:id/properties/:propertyId` | Update a property definition |
-| `POST /api/databases/:id/rows` | Add a database row |
-| `PATCH /api/databases/:id/rows/:rowId` | Persist row values |
-| `POST /api/databases/:id/views` | Create a saved filter/sort view |
-| `PATCH /api/databases/:id/views/:viewId` | Persist a view's name, filter, or sort |
-| `POST /api/databases/:id/templates` | Create or update a reusable row template |
-| `POST /api/databases/:id/automations` | Create a row-created or row-updated rule |
-| `GET/POST /api/documents/:id/comments` | Read or add document comments |
-| `GET /api/documents/:id/revisions` | Read saved document versions |
-| `POST /api/documents/:id/revisions/:revisionId/restore` | Restore a previous version |
-| `GET /api/projects/:id/search?q=` | Search document and database titles |
-| `GET/PATCH /api/notifications` | Read or mark notifications as read |
-| `GET/POST /api/projects/:id/records/tasks` | Tasks |
-| `GET/POST /api/projects/:id/records/issues` | Issues |
-| `GET/POST /api/projects/:id/records/bom` | BOM records |
-| `GET/POST /api/projects/:id/records/tests` | Test records |
-| `POST /api/attachments` | Multipart file upload with `documentId` and `file` |
-| `GET/POST /api/workspaces/:id/members` | List members or give an existing account a workspace role (admin/owner only) |
-| `PATCH/DELETE /api/workspaces/:id/members/:memberId` | Update a nickname or role, or remove a member (admin/owner only) |
-| `PATCH /api/projects/:id/records/tasks/:taskId` | Assign or clear a task's responsible workspace member |
+| `backups/database/` | PostgreSQL `.dump` |
+| `backups/workspace/` | Markdown 與本機工作區封存 |
+| `backups/attachments/` | MinIO 附件封存 |
+| `backups/status/` | manifest、SHA-256 與最後成功狀態 |
 
-## Environment variables
+驗證最近一次備份時，先從 `backups/status/last-success.txt` 取得 ID，再執行：
 
-Use [`.env.example`](.env.example) as the complete non-secret template.
+```bash
+docker compose exec backup verify-backup <backup-id>
+```
 
-| Variable | Required | Meaning |
-| --- | --- | --- |
-| `DATABASE_URL` | Yes | PostgreSQL connection string |
-| `AUTH_SECRET` | Yes | Cookie and collaboration-token signing key |
-| `NEXTAUTH_URL` | Yes | Canonical app URL |
-| `BOOTSTRAP_ADMIN_*` | First start | Initial owner account only |
-| `NEXT_PUBLIC_COLLABORATION_URL` | Yes | Browser-reachable Yjs WebSocket URL |
-| `COLLABORATION_TOKEN_TTL` | No | Collaboration token lifetime; default `10m` |
-| `COLLABORATION_ALLOWED_ORIGINS` | No | Comma-separated browser origins allowed to open collaboration sockets |
-| `MINIO_*` | For uploads | MinIO endpoint, credentials, and bucket |
-| `MAX_ATTACHMENT_BYTES` | Attachment safety limit | Maximum upload size in bytes; default is 10 MiB |
-| `ALLOWED_ATTACHMENT_MIME_TYPES` | Optional attachment allow-list | Comma-separated MIME types; blank permits all types |
-| `REDIS_URL` | Planned scaling | Reserved for background jobs and collaboration scaling |
-| `BACKUP_INTERVAL_HOURS` | No | Backup interval in hours; default `24` |
-| `BACKUP_RETENTION_DAYS` | No | Days of backup archives retained; default `14` |
+這是非破壞性的完整性驗證；正式還原前請先在獨立環境演練。
 
-## Security and operational notes
+## 安全與部署注意事項
 
-- Use a unique, long `AUTH_SECRET` and replace the example passwords before the first launch.
-- The collaboration server validates the application-signed document token before accepting a socket. It does not trust a room name supplied by the browser, restricts browser origins, and closes a socket at token expiry. A removed member therefore loses active editing access within the configured token lifetime (10 minutes by default).
-- Keep the WebSocket URL private or TLS-protected in production. The token is short-lived but should still only travel over `wss://`.
-- This MVP does not provide self-service registration, password recovery, deletion workflows, automated restore, SSO, or immutable audit retention. Add them before production use.
-- For Rocket projects, preserve the existing safety discipline: state evaluation must remain `ObserveOnly`, unsafe/unknown ground links fail closed, and missing telemetry is represented as `UNKNOWN`/`---`, never silently converted to zero.
+- 對外部署請以 TLS reverse proxy 代理 `app` 與 `collab`，並將 `NEXTAUTH_URL` 改為公開 HTTPS 網址、`NEXT_PUBLIC_COLLABORATION_URL` 改為對應的 `wss://`。
+- 不要將 PostgreSQL、Redis、MinIO 對公網暴露。Compose 預設只把 MinIO 與協作連接埠綁在本機。
+- **設定中心 → 安全與功能開關** 可關閉協作、附件、Markdown 下載、網頁帳號建立、強制首次改密碼與登入限速；設定檔會存於 Git 忽略的 `workspace-data/.rocket-workspace-settings.env`。
+- 關閉功能只阻止新操作，不會刪除既有資料。
 
-## Deliberately deferred
+## 開發與驗證
 
-- AI assistant and OpenAI-compatible/Ollama provider configuration
-- Fine-grained document sharing, invitations, and SSO
-- Cursors/awareness UI, Yjs persistent update log, and multi-replica collaboration fan-out
-- Rich record-editing forms, external integrations, exports, and automated restore
+需要 Node.js 22+ 與 pnpm：
 
-These are intentionally listed so the MVP is not mistaken for a complete production control system.
+```bash
+pnpm install
+pnpm db:generate
+pnpm db:deploy
+pnpm db:seed
+pnpm dev
+# 另一個終端機
+pnpm collab
+```
+
+修改後最低限度執行：
+
+```bash
+pnpm typecheck
+pnpm test
+pnpm build
+```
+
+資料庫 schema 的唯一來源是 [prisma/schema.prisma](prisma/schema.prisma)。任何結構變更都必須新增 Prisma migration，不能只依賴 `db push`。
+
+## 授權
+
+[AGPL-3.0-or-later](LICENSE)。若修改後透過網路提供此應用程式，必須向使用者提供相對應的原始碼。貢獻方式見 [CONTRIBUTING.md](CONTRIBUTING.md)，安全通報見 [SECURITY.md](SECURITY.md)。
