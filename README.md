@@ -2,6 +2,10 @@
 
 Self-hosted, Notion-style project workspace for teams. This MVP deliberately starts with the collaboration and evidence trail that a hardware programme needs: structured project space, nested documents, authenticated access, role checks, auditable module records, attachment storage, and real-time text synchronization.
 
+## License
+
+Rocket Workspace is licensed under [AGPL-3.0-or-later](LICENSE). In particular, modified versions offered to users over a network must also offer their corresponding source code. Do not commit personal documents, backups, attachments, or secrets; see [CONTRIBUTING.md](CONTRIBUTING.md).
+
 AI is intentionally **out of scope for this version**. No OpenAI key is required, stored, or used.
 
 ## Included MVP
