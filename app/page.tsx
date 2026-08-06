@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/lib/auth";
+import { rawAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { WorkspaceShell } from "@/components/workspace-shell";
 import { readDocumentMarkdown } from "@/lib/document-storage";
@@ -7,7 +7,7 @@ import { readDocumentMarkdown } from "@/lib/document-storage";
 export const dynamic = "force-dynamic";
 
 export default async function Home({ searchParams }: { searchParams: Promise<{ project?: string }> }) {
-  const session = await auth();
+  const session = await rawAuth();
   if (!session?.user?.id) redirect("/login");
   const account = await prisma.user.findUnique({ where: { id: session.user.id }, select: { mustChangePassword: true, name: true, avatarEmoji: true } });
   if (account?.mustChangePassword) redirect("/change-password");

@@ -6,7 +6,7 @@
 
 - 這是自架的團隊文件與專案管理系統，不是飛控、地面站或任何即時安全決策系統。
 - 文件的 Markdown 位置是 `workspace-data/documents/`；它是可讀的交換／備份格式。Tiptap JSON、資料庫記錄、附件、留言與版本歷史仍以 PostgreSQL/MinIO 為準。
-- AI 與外部整合預設停用。AI 金鑰、GitHub Token、Webhook 密鑰只能寫入 Git 忽略的 `workspace-data/.rocket-workspace-settings.env`，不得回傳至前端、寫入文件、日誌或 Git。
+- AI 與外部整合預設停用。AI 金鑰、GitHub Token、Webhook 密鑰必須以 `WorkspaceSettings.encryptedSecrets` 的 AES-256-GCM 密文保存，依工作空間隔離；不得回傳至前端、寫入文件、日誌、工作區檔案或 Git。舊版 `.rocket-workspace-settings.env` 不可用於整合密鑰。
 
 ## 技術地圖
 
@@ -28,7 +28,7 @@
 4. 所有讀寫 API 都必須先認證，再依 `lib/permissions.ts` 檢查專案或工作空間角色。不可只依賴前端鎖定介面。
 5. Markdown 外部載入必須是明確使用者動作，不能靜默覆蓋線上協作內容；雙方同時變更時以三方合併預覽與衝突標記保留兩份內容。
 6. 資料庫結構變更必須同時修改 Prisma schema 與新增 migration；不以 `prisma db push` 取代 migration。
-7. AI、GitHub 與 Webhook API 必須先檢查工作空間權限與設定開關；未啟用時不可對外發出網路請求。
+7. AI、GitHub 與 Webhook API 必須先檢查工作空間權限與設定開關；未啟用時不可對外發出網路請求。使用者提供的 AI／Webhook URL 必須經 `lib/external-url.ts` 驗證，拒絕私有網路與非 HTTPS 目標；只有受 `OLLAMA_ALLOWED_HOSTS` 限制的 Ollama 可使用內部 HTTP。
 
 ## 開發流程
 
@@ -51,7 +51,7 @@
 
 - 預設閱讀模式；模組需要由有寫入權限的使用者按「啟用編輯」才可修改。
 - 選單、錯誤、通知與空狀態採繁體中文，並清楚告知操作後果。
-- 功能開關由設定中心管理；關閉服務時應阻止新操作但保留現有資料。
+- 功能開關由設定中心按工作空間管理；關閉服務時應阻止新操作但保留現有資料。主機備份排程是跨工作空間設定，僅 `isSystemAdmin` 可調整。
 - 任務相依不可自我相依、跨專案或形成循環。修改任務 API 回傳時保留 `dependencies`，避免前端編輯後遺失顯示。
 - 資料庫、文件與附件要有明確的新增、編輯、刪除／回收與還原路徑；不要只做新增按鈕。
 

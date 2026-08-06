@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
-import { readSecuritySettings } from "@/lib/runtime-settings";
+import { readWorkspaceSettings } from "@/lib/workspace-settings";
 
 const schema = z.object({ name: z.string().trim().min(1).max(80), email: z.string().email(), password: z.string().min(1).max(128), nickname: z.string().trim().min(1).max(40).optional(), teamGroup: z.string().trim().min(1).max(60).optional(), jobTitle: z.string().trim().min(1).max(80).optional(), role: z.nativeEnum(WorkspaceRole).default(WorkspaceRole.VIEWER) });
 
@@ -12,7 +12,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params; const requester = await prisma.membership.findFirst({ where: { userId: session.user.id, workspaceId: id, role: { in: ["OWNER", "ADMIN"] } } });
   if (!requester) return NextResponse.json({ error: "Owner or admin role required" }, { status: 403 });
-  const security = await readSecuritySettings();
+  const security = (await readWorkspaceSettings(id)).security;
   if (!security.accountProvisioningEnabled) return NextResponse.json({ error: "管理者已停用網頁建立帳號" }, { status: 403 });
   const parsed = schema.safeParse(await request.json()); if (!parsed.success) return NextResponse.json({ error: "帳號資料不完整；初始密碼至少需要 12 個字元" }, { status: 400 });
   if (parsed.data.password.length < security.minimumPasswordLength) return NextResponse.json({ error: `初始密碼至少需要 ${security.minimumPasswordLength} 個字元` }, { status: 400 });

@@ -13,8 +13,8 @@
 - **資料庫**：欄位型別、表格／看板／行事曆／時間軸／圖庫／清單／表單檢視、篩選、排序、關聯、Rollup、公式、模板、自動化、欄列拖放排序、列回收桶與欄位回收桶。
 - **專案管理**：任務、Issue、BOM、測試紀錄可新增、編輯、軟刪除與還原；任務可指派團隊成員、設定多個前置任務，並阻止循環依賴。甘特圖支援拖拉日期、關鍵路徑、基線、資源負載與依前置任務自動順延。
 - **文件協作周邊**：留言串、回覆、解析、刪除、版本歷史與還原、MinIO 附件上傳／下載／刪除、站內通知。
-- **設定與維運**：明暗模式、主題配色、專案資訊、備份排程、安全與功能開關；PostgreSQL、Markdown、MinIO 附件定時備份及完整性驗證。
-- **AI 與外部整合**：可在設定中心設定 OpenAI-compatible API 或 Ollama，於「AI 與整合」頁面對話；GitHub Issue 為唯讀查詢，Webhook 可帶 HMAC SHA-256 簽章送出測試事件。服務與金鑰都預設留白、停用且不回顯。
+- **設定與維運**：明暗模式、主題配色、專案資訊、工作空間隔離的安全／功能開關；主機備份排程僅由系統管理員調整，並備份 PostgreSQL、Markdown、MinIO 附件及完整性資訊。
+- **AI 與外部整合**：可在設定中心設定 OpenAI-compatible API 或 Ollama，於「AI 與整合」頁面對話；GitHub Issue 為唯讀查詢，Webhook 可帶 HMAC SHA-256 簽章送出測試事件。每個工作空間的密鑰以 AES-256-GCM 加密存於 PostgreSQL、永不回顯；外連一律驗證 HTTPS 與私有網路位址，Ollama 僅允許受信任的內部主機。
 - **部署**：Docker Compose 一鍵啟動 Next.js、PostgreSQL、Redis、MinIO、Yjs 協作與備份服務；資料庫 migration 自動套用。
 
 ## 仍需加強／尚未完成
@@ -52,7 +52,7 @@
 - 在側邊欄建立、拖放或右鍵管理文件；文件會以 `.md` 同步到 `workspace-data/documents/`。
 - 文件內以 `/` 開啟區塊選單；使用 **MD 原始碼** 編輯 Markdown，使用 **讀取檔案** 明確載入外部修改。
 - 到 **任務** 模組按「啟用編輯」，在 **前置任務** 欄位以 Command（Windows/Linux：Ctrl）多選前置任務。
-- 到 **設定中心** 管理主題、專案、團隊帳號、備份與安全開關。只有擁有者與管理員可調整工作空間設定。
+- 到 **設定中心** 管理主題、專案、團隊帳號、安全開關與該工作空間的外部整合。只有擁有者與管理員可調整工作空間設定；bootstrap 管理員同時是系統管理員，可調整主機備份排程。
 
 ## 架構與資料位置
 
@@ -96,8 +96,9 @@ docker compose exec backup restore-drill <backup-id>
 
 - 對外部署請以 TLS reverse proxy 代理 `app` 與 `collab`，並將 `NEXTAUTH_URL` 改為公開 HTTPS 網址、`NEXT_PUBLIC_COLLABORATION_URL` 改為對應的 `wss://`。
 - 不要將 PostgreSQL、Redis、MinIO 對公網暴露。Compose 預設只把 MinIO 與協作連接埠綁在本機。
-- **設定中心 → 安全與功能開關** 可關閉協作、附件、Markdown 下載、網頁帳號建立、強制首次改密碼與登入限速；設定檔會存於 Git 忽略的 `workspace-data/.rocket-workspace-settings.env`。
-- **帳號安全**與 AI／整合設定都預設關閉。設定頁的密鑰欄位只接受新值，既有值不會回傳至瀏覽器；留白會保留目前的本機值。
+- **設定中心 → 安全與功能開關** 可關閉協作、附件、Markdown 下載、網頁帳號建立、強制首次改密碼與登入限速；設定依工作空間隔離，帳號同時加入多個空間時採最嚴格的密碼與登入限制。
+- **帳號安全**與 AI／整合設定都預設關閉。設定頁的密鑰欄位只接受新值，既有值不會回傳至瀏覽器；留白會保留目前的加密值。系統不再讀取舊版明文 AI／整合設定，舊的 `.rocket-workspace-settings.env` 亦會從工作區備份排除。
+- `WORKSPACE_SETTINGS_ENCRYPTION_KEY` 可設定為獨立 32 字元以上的密鑰；留白時會使用 `AUTH_SECRET` 衍生加密金鑰。請勿遺失此值，否則既有整合密鑰無法解密。
 - 關閉功能只阻止新操作，不會刪除既有資料。
 
 ## 開發與驗證

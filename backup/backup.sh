@@ -30,7 +30,9 @@ backup_once() {
   echo "[$(date -u +%FT%TZ)] Starting backup $backup_id"
   PGPASSWORD="$PGPASSWORD" pg_dump --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$PGDATABASE" --format=custom --no-owner --no-acl --file="$stage/database.dump"
 
-  tar -C /source/workspace -czf "$stage/workspace.tar.gz" .
+  # Runtime settings can contain host policy. Secrets live encrypted in the DB,
+  # but exclude this legacy path so old plaintext files can never enter backups.
+  tar -C /source/workspace --exclude='.rocket-workspace-settings.env' -czf "$stage/workspace.tar.gz" .
 
   mc alias set local "http://$MINIO_ENDPOINT:$MINIO_PORT" "$MINIO_ACCESS_KEY" "$MINIO_SECRET_KEY" >/dev/null
   mc mirror --overwrite "local/$MINIO_BUCKET" "$stage/attachments" >/dev/null

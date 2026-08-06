@@ -10,8 +10,8 @@ async function main() {
   if (!email || !password) throw new Error("BOOTSTRAP_ADMIN_EMAIL and BOOTSTRAP_ADMIN_PASSWORD are required");
   const admin = await prisma.user.upsert({
     where: { email },
-    update: { name: process.env.BOOTSTRAP_ADMIN_NAME || "Workspace Admin" },
-    create: { email, name: process.env.BOOTSTRAP_ADMIN_NAME || "Workspace Admin", passwordHash: await bcrypt.hash(password, 12) },
+    update: { name: process.env.BOOTSTRAP_ADMIN_NAME || "Workspace Admin", isSystemAdmin: true },
+    create: { email, name: process.env.BOOTSTRAP_ADMIN_NAME || "Workspace Admin", passwordHash: await bcrypt.hash(password, 12), isSystemAdmin: true },
   });
   const workspace = await prisma.workspace.upsert({
     where: { slug: "rocket" }, update: {}, create: { name: "Rocket Workspace", slug: "rocket" },

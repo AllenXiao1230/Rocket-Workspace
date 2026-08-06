@@ -3,7 +3,7 @@ import { auth } from "@/lib/auth";
 import { attachmentBucket, DeleteObjectCommand, GetObjectCommand, objectStorage, PutObjectCommand } from "@/lib/object-storage";
 import { prisma } from "@/lib/prisma";
 import { canWrite, documentAccess } from "@/lib/permissions";
-import { readSecuritySettings } from "@/lib/runtime-settings";
+import { readWorkspaceSettings } from "@/lib/workspace-settings";
 
 const maxAttachmentBytes = Number(process.env.MAX_ATTACHMENT_BYTES || 10 * 1024 * 1024);
 const allowedMimeTypes = new Set((process.env.ALLOWED_ATTACHMENT_MIME_TYPES || "").split(",").map((type) => type.trim()).filter(Boolean));
@@ -62,7 +62,6 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const userId = await currentUser();
   if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  if (!(await readSecuritySettings()).attachmentsEnabled) return NextResponse.json({ error: "管理者已停用附件上傳" }, { status: 403 });
   const data = await request.formData();
   const file = data.get("file");
   const documentId = data.get("documentId");
@@ -72,6 +71,7 @@ export async function POST(request: Request) {
   if (allowedMimeTypes.size && !allowedMimeTypes.has(file.type)) return NextResponse.json({ error: "This file type is not allowed" }, { status: 415 });
   const access = await documentAccess(userId, documentId);
   if (!access || !canWrite(access.membership.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (!(await readWorkspaceSettings(access.document.project.workspaceId)).security.attachmentsEnabled) return NextResponse.json({ error: "管理者已停用附件上傳" }, { status: 403 });
 
   const storageKey = `${access.document.projectId}/${documentId}/${crypto.randomUUID()}-${safeFilename(file.name)}`;
   try {
