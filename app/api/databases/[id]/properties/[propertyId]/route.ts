@@ -20,6 +20,6 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
   const { id, propertyId } = await params; const access = await databaseAccess(session.user.id, id);
   if (!access || !canWrite(access.membership.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const property = await prisma.databaseProperty.findFirst({ where: { id: propertyId, databaseId: id, deletedAt: null } }); if (!property) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const deletionBatchId = crypto.randomUUID(); await prisma.databaseProperty.update({ where: { id: propertyId }, data: { deletedAt: new Date(), deletionBatchId } }); await prisma.auditEvent.create({ data: { userId: session.user.id, action: "database_property.trashed", entity: "database_property", entityId: propertyId, metadata: { databaseId: id, deletionBatchId } } });
+  const deletionBatchId = crypto.randomUUID(); await prisma.databaseProperty.update({ where: { id: propertyId }, data: { deletedAt: new Date(), deletionBatchId } }); await prisma.auditEvent.create({ data: { userId: session.user.id, action: "database_property.trashed", entity: "database_property", entityId: propertyId, workspaceId: access.database.project.workspaceId, projectId: access.database.projectId, metadata: { databaseId: id, deletionBatchId } } });
   return NextResponse.json({ ok: true, deletionBatchId });
 }

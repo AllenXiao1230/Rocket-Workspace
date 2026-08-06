@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { canWrite, documentAccess } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
+import { attachmentBucket, DeleteObjectCommand, objectStorage } from "@/lib/object-storage";
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -18,6 +19,23 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!attachmentId) return NextResponse.json({ error: "attachmentId required" }, { status: 400 });
   const restored = await prisma.attachment.updateMany({ where: { id: attachmentId, documentId: id, deletedAt: { not: null } }, data: { deletedAt: null, deletionBatchId: null } });
   if (!restored.count) return NextResponse.json({ error: "找不到可還原的附件" }, { status: 404 });
-  await prisma.auditEvent.create({ data: { action: "attachment.restored", entity: "attachment", entityId: attachmentId, userId: session.user.id, metadata: { documentId: id } } });
+  await prisma.auditEvent.create({ data: { action: "attachment.restored", entity: "attachment", entityId: attachmentId, userId: session.user.id, workspaceId: access.document.project.workspaceId, projectId: access.document.projectId, metadata: { documentId: id } } });
   return NextResponse.json({ ok: true });
+}
+
+export async function DELETE(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { id } = await params; const access = await documentAccess(session.user.id, id);
+  if (!access || !["OWNER", "ADMIN"].includes(access.membership.role)) return NextResponse.json({ error: "只有擁有者或管理員可永久刪除附件" }, { status: 403 });
+  const attachmentId = new URL(request.url).searchParams.get("attachmentId") || "";
+  const attachment = await prisma.attachment.findFirst({ where: { id: attachmentId, documentId: id, deletedAt: { not: null } } });
+  if (!attachment) return NextResponse.json({ error: "找不到可永久刪除的附件" }, { status: 404 });
+  try {
+    await objectStorage.send(new DeleteObjectCommand({ Bucket: attachmentBucket, Key: attachment.storageKey }));
+    await prisma.attachment.delete({ where: { id: attachment.id } });
+    await prisma.auditEvent.create({ data: { action: "attachment.purged", entity: "attachment", entityId: attachment.id, userId: session.user.id, workspaceId: access.document.project.workspaceId, projectId: access.document.projectId, metadata: { documentId: id, filename: attachment.filename, irreversible: true } } });
+    return NextResponse.json({ ok: true });
+  } catch {
+    return NextResponse.json({ error: "無法永久刪除附件，請稍後再試" }, { status: 502 });
+  }
 }

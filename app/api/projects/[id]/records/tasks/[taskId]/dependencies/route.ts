@@ -54,6 +54,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     prisma.taskDependency.createMany({ data: dependencyIds.map((dependsOnId) => ({ taskId, dependsOnId })) }),
   ]);
   const updated = await prisma.task.findUniqueOrThrow({ where: { id: taskId }, include: taskInclude });
-  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "task.dependencies.updated", entity: "task", entityId: taskId, metadata: { dependencyIds } } });
+  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "task.dependencies.updated", entity: "task", entityId: taskId, workspaceId: access.project.workspaceId, projectId, metadata: { dependencyIds } } });
   return NextResponse.json(updated);
 }

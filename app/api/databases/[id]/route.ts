@@ -11,7 +11,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const parsed = z.object({ name: z.string().trim().min(1).max(120).optional() }).safeParse(await request.json());
   if (!parsed.success) return NextResponse.json({ error: "Invalid database" }, { status: 400 });
   const database = await prisma.database.update({ where: { id }, data: parsed.data });
-  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "database.updated", entity: "database", entityId: id, metadata: { projectId: access.database.projectId, changes: parsed.data } } });
+  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "database.updated", entity: "database", entityId: id, workspaceId: access.database.project.workspaceId, projectId: access.database.projectId, metadata: { changes: parsed.data } } });
   return NextResponse.json(database);
 }
 export async function DELETE(_: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -19,6 +19,6 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
   const { id } = await params; const access = await databaseAccess(session.user.id, id);
   if (!access || !["OWNER", "ADMIN"].includes(access.membership.role)) return NextResponse.json({ error: "只有擁有者或管理員可永久刪除資料庫" }, { status: 403 });
   await prisma.database.delete({ where: { id } });
-  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "database.deleted", entity: "database", entityId: id, metadata: { projectId: access.database.projectId, irreversible: true } } });
+  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "database.deleted", entity: "database", entityId: id, workspaceId: access.database.project.workspaceId, projectId: access.database.projectId, metadata: { irreversible: true } } });
   return NextResponse.json({ ok: true });
 }

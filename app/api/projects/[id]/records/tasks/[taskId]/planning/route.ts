@@ -21,6 +21,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (startDate && dueDate && startDate > dueDate) return NextResponse.json({ error: "開始日期不可晚於結束日期" }, { status: 400 });
   if (baselineStartDate && baselineDueDate && baselineStartDate > baselineDueDate) return NextResponse.json({ error: "基線開始日期不可晚於結束日期" }, { status: 400 });
   const updated = await prisma.task.update({ where: { id: taskId }, data: { startDate, dueDate, baselineStartDate, baselineDueDate, estimatedHours: parsed.data.estimatedHours === undefined ? undefined : parsed.data.estimatedHours }, include: { assignee: { select: { id: true, name: true, email: true } }, dependencies: { where: { dependsOn: { deletedAt: null } }, include: { dependsOn: { select: { id: true, title: true, status: true } } } } } });
-  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "task.planning.updated", entity: "task", entityId: taskId, metadata: parsed.data } });
+  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "task.planning.updated", entity: "task", entityId: taskId, workspaceId: access.project.workspaceId, projectId, metadata: parsed.data } });
   return NextResponse.json(updated);
 }

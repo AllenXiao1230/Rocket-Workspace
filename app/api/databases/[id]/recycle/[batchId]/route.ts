@@ -8,6 +8,6 @@ export async function PATCH(_: Request, { params }: { params: Promise<{ id: stri
   const { id, batchId } = await params; const access = await databaseAccess(session.user.id, id); if (!access || !canWrite(access.membership.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const result = await prisma.databaseRow.updateMany({ where: { databaseId: id, deletionBatchId: batchId, deletedAt: { not: null } }, data: { deletedAt: null, deletionBatchId: null } });
   if (!result.count) return NextResponse.json({ error: "找不到可還原的列" }, { status: 404 });
-  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "database_row.restored", entity: "database_row", entityId: batchId, metadata: { databaseId: id, restoredCount: result.count } } });
+  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "database_row.restored", entity: "database_row", entityId: batchId, workspaceId: access.database.project.workspaceId, projectId: access.database.projectId, metadata: { databaseId: id, restoredCount: result.count } } });
   return NextResponse.json({ ok: true, restoredCount: result.count });
 }

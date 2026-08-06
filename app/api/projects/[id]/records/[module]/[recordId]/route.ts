@@ -30,6 +30,6 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
   else if (values.kind.data === "issues") { const result = await prisma.issue.updateMany({ where, data }); if (!result.count) return NextResponse.json({ error: "Not found" }, { status: 404 }); }
   else if (values.kind.data === "bom") { const result = await prisma.bomItem.updateMany({ where, data }); if (!result.count) return NextResponse.json({ error: "Not found" }, { status: 404 }); }
   else { const result = await prisma.testRecord.updateMany({ where, data }); if (!result.count) return NextResponse.json({ error: "Not found" }, { status: 404 }); }
-  await prisma.auditEvent.create({ data: { userId: session.user.id, action: `${values.kind.data}.trashed`, entity: values.kind.data, entityId: values.recordId, metadata: { deletionBatchId } } });
+  await prisma.auditEvent.create({ data: { userId: session.user.id, action: `${values.kind.data}.trashed`, entity: values.kind.data, entityId: values.recordId, workspaceId: values.access.project.workspaceId, projectId: values.id, metadata: { deletionBatchId } } });
   return NextResponse.json({ ok: true, deletionBatchId });
 }

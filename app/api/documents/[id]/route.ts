@@ -35,7 +35,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   await writeDocumentMarkdown(document, parsed.data.markdown ?? priorMarkdown ?? undefined);
   const markdownSnapshot = await readDocumentMarkdownSnapshot(document);
   if (markdownSnapshot) await prisma.document.update({ where: { id: document.id }, data: { markdownHash: markdownSnapshot.contentHash, markdownBase: markdownSnapshot.markdown } });
-  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "document.updated", entity: "document", entityId: id } });
+  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "document.updated", entity: "document", entityId: id, workspaceId: access.document.project.workspaceId, projectId: prior.projectId } });
   const documents = await prisma.document.findMany({ where: { projectId: prior.projectId, deletedAt: null }, select: { id: true, parentId: true, position: true } });
   return NextResponse.json({ id: document.id, icon: document.icon, parentId: document.parentId, position: document.position, updatedAt: document.updatedAt, documents });
 }
@@ -49,6 +49,6 @@ export async function DELETE(_: NextRequest, { params }: { params: Promise<{ id:
   while (pending.length) { const current = pending.pop(); if (!current) continue; removedIds.push(current); pending.push(...(childMap[current] || [])); }
   const deletionBatchId = crypto.randomUUID();
   await prisma.document.updateMany({ where: { id: { in: removedIds } }, data: { deletedAt: new Date(), deletionBatchId } });
-  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "document.trashed", entity: "document", entityId: id, metadata: { deletionBatchId, descendantCount: Math.max(0, removedIds.length - 1) } } });
+  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "document.trashed", entity: "document", entityId: id, workspaceId: access.document.project.workspaceId, projectId: access.document.projectId, metadata: { deletionBatchId, descendantCount: Math.max(0, removedIds.length - 1) } } });
   return NextResponse.json({ ok: true, removedIds, deletionBatchId });
 }

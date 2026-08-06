@@ -408,13 +408,17 @@ model Attachment {
 }
 
 model AuditEvent {
-  id        String   @id @default(cuid())
-  action    String
-  entity    String
-  entityId  String
-  metadata  Json?
-  userId    String?
-  user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  action      String
+  entity      String
+  entityId    String
+  metadata    Json?
+  workspaceId String?
+  projectId   String?
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
   @@index([entity, entityId, createdAt])
+  @@index([workspaceId, createdAt])
+  @@index([projectId, createdAt])
 }

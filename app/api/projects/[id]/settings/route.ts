@@ -78,7 +78,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     if (input.data.backupIntervalHours !== undefined || input.data.backupRetentionDays !== undefined) {
       const backup = await readBackupSettings(); await writeBackupSettings({ intervalHours: input.data.backupIntervalHours ?? backup.intervalHours, retentionDays: input.data.backupRetentionDays ?? backup.retentionDays });
     }
-    await prisma.auditEvent.create({ data: { userId: result.session.user.id, action: "workspace.settings_updated", entity: "project", entityId: id } });
+    await prisma.auditEvent.create({ data: { userId: result.session.user.id, action: "workspace.settings_updated", entity: "project", entityId: id, workspaceId: result.access.project.workspaceId, projectId: id } });
     const [saved, backup] = await Promise.all([readWorkspaceSettings(result.access.project.workspaceId), readBackupSettings()]);
     const publicSettings = publicWorkspaceSettings(saved);
     return NextResponse.json({ workspace: { id: workspace.id, name: workspace.name, slug: workspace.slug }, project: { id: project.id, name: project.name, code: project.code, description: project.description }, backup: { ...backup, ...(await readBackupStatus()) }, security: publicSettings.security, ai: publicSettings.ai, integrations: publicSettings.integrations, canManage: true, canManageHost: Boolean(account?.isSystemAdmin) });

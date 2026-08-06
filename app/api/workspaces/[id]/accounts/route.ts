@@ -22,7 +22,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const member = await prisma.$transaction(async (tx) => {
     const user = await tx.user.create({ data: { name: parsed.data.name, email, passwordHash: await bcrypt.hash(parsed.data.password, 12), mustChangePassword: security.forcePasswordChangeOnNewAccount } });
     const membership = await tx.membership.create({ data: { userId: user.id, workspaceId: id, role: parsed.data.role, nickname: parsed.data.nickname, teamGroup: parsed.data.teamGroup, jobTitle: parsed.data.jobTitle }, include: { user: { select: { id: true, name: true, email: true } } } });
-    await tx.auditEvent.create({ data: { userId: session.user.id, action: "workspace.account_created", entity: "membership", entityId: membership.id, metadata: { workspaceId: id, role: parsed.data.role } } });
+    await tx.auditEvent.create({ data: { userId: session.user.id, action: "workspace.account_created", entity: "membership", entityId: membership.id, workspaceId: id, metadata: { role: parsed.data.role } } });
     return membership;
   });
   return NextResponse.json(member, { status: 201 });

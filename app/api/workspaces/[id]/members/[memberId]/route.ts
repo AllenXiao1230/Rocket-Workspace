@@ -19,7 +19,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!canChangeOwner(requester.role, target.role, input.data.role)) return NextResponse.json({ error: "只有擁有者能變更擁有者角色" }, { status: 403 });
   if (target.role === "OWNER" && input.data.role && input.data.role !== "OWNER" && await prisma.membership.count({ where: { workspaceId: id, role: "OWNER" } }) <= 1) return NextResponse.json({ error: "工作空間至少要保留一位擁有者" }, { status: 400 });
   const member = await prisma.membership.update({ where: { id: memberId }, data: input.data, include: { user: { select: { id: true, email: true, name: true } } } });
-  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "workspace.member_updated", entity: "membership", entityId: memberId, metadata: { workspaceId: id, changes: input.data } } });
+  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "workspace.member_updated", entity: "membership", entityId: memberId, workspaceId: id, metadata: { changes: input.data } } });
   return NextResponse.json(member);
 }
 
@@ -30,6 +30,6 @@ export async function DELETE(_: Request, { params }: { params: Promise<{ id: str
   if (!canChangeOwner(requester.role, target.role)) return NextResponse.json({ error: "只有擁有者能移除擁有者" }, { status: 403 });
   if (target.role === "OWNER" && await prisma.membership.count({ where: { workspaceId: id, role: "OWNER" } }) <= 1) return NextResponse.json({ error: "工作空間至少要保留一位擁有者" }, { status: 400 });
   await prisma.membership.delete({ where: { id: memberId } });
-  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "workspace.member_removed", entity: "membership", entityId: memberId, metadata: { workspaceId: id, removedUserId: target.userId, role: target.role } } });
+  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "workspace.member_removed", entity: "membership", entityId: memberId, workspaceId: id, metadata: { removedUserId: target.userId, role: target.role } } });
   return NextResponse.json({ ok: true });
 }

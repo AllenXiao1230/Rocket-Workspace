@@ -31,7 +31,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (!input.success) return NextResponse.json({ error: input.error.issues[0]?.message || "專案資料不正確" }, { status: 400 });
   try {
     const project = await prisma.project.create({ data: { workspaceId: id, ...input.data, description: input.data.description || null } });
-    await prisma.auditEvent.create({ data: { userId: session.user.id, action: "project.created", entity: "project", entityId: project.id, metadata: { code: project.code } } });
+    await prisma.auditEvent.create({ data: { userId: session.user.id, action: "project.created", entity: "project", entityId: project.id, workspaceId: id, projectId: project.id, metadata: { code: project.code } } });
     return NextResponse.json(project, { status: 201 });
   } catch (error) {
     const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";

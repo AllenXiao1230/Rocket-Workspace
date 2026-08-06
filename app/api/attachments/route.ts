@@ -76,7 +76,7 @@ export async function POST(request: Request) {
   try {
     await objectStorage.send(new PutObjectCommand({ Bucket: attachmentBucket, Key: storageKey, Body: Buffer.from(await file.arrayBuffer()), ContentType: file.type || "application/octet-stream" }));
     const attachment = await prisma.attachment.create({ data: { documentId, filename: file.name, mimeType: file.type || "application/octet-stream", size: file.size, storageKey } });
-    await prisma.auditEvent.create({ data: { action: "attachment.uploaded", entity: "attachment", entityId: attachment.id, userId, metadata: { documentId, filename: attachment.filename, size: attachment.size } } });
+    await prisma.auditEvent.create({ data: { action: "attachment.uploaded", entity: "attachment", entityId: attachment.id, userId, workspaceId: access.document.project.workspaceId, projectId: access.document.projectId, metadata: { documentId, filename: attachment.filename, size: attachment.size } } });
     return NextResponse.json(attachment, { status: 201 });
   } catch {
     try { await objectStorage.send(new DeleteObjectCommand({ Bucket: attachmentBucket, Key: storageKey })); } catch { /* The cleanup job will handle an unreachable object store. */ }
@@ -97,7 +97,7 @@ export async function DELETE(request: Request) {
   try {
     const deletionBatchId = crypto.randomUUID();
     await prisma.attachment.update({ where: { id: attachment.id }, data: { deletedAt: new Date(), deletionBatchId } });
-    await prisma.auditEvent.create({ data: { action: "attachment.trashed", entity: "attachment", entityId: attachment.id, userId, metadata: { documentId: attachment.documentId, filename: attachment.filename, deletionBatchId } } });
+    await prisma.auditEvent.create({ data: { action: "attachment.trashed", entity: "attachment", entityId: attachment.id, userId, workspaceId: access.document.project.workspaceId, projectId: access.document.projectId, metadata: { documentId: attachment.documentId, filename: attachment.filename, deletionBatchId } } });
     return NextResponse.json({ ok: true });
   } catch {
     return NextResponse.json({ error: "Could not remove attachment. Please try again." }, { status: 502 });
