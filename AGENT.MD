@@ -44,7 +44,7 @@
    git diff --check
    ```
 
-5. 修改容器執行內容時，再執行 `docker compose --progress plain build app collab backup`，重建相關服務，檢查健康狀態與登入頁 HTTP 回應。
+5. 修改容器執行內容時，再執行 `docker compose --progress plain build app collab backup`，重建相關服務，檢查 `GET /api/health`（含資料庫可用性）、健康狀態與登入頁 HTTP 回應。
 6. 需要推送 GitHub 時，先確認 diff、測試與目標分支；不要提交使用者資料。
 
 ## 功能設計原則

@@ -45,6 +45,8 @@
 
 4. 開啟 `http://localhost:3000`，以 bootstrap 管理員帳號登入。
 
+服務就緒探針為 `http://localhost:3000/api/health`：它只回傳 `ok` 或 `degraded`，並確認應用程式可連上 PostgreSQL，不會洩漏帳號或設定內容。
+
 首次啟動會建立 `Rocket Workspace` 與範例專案。MinIO 管理介面僅供基礎設施管理，位於 `http://localhost:9001`；請使用 `.env` 中的 `MINIO_ACCESS_KEY` 與 `MINIO_SECRET_KEY` 登入。
 
 ## 日常使用
