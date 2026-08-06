@@ -2,13 +2,53 @@
 
 import { useEffect, useState } from "react";
 
-type Comment = { id: string; body: string; resolvedAt: string | null; createdAt: string; author: { name: string } };
+type Comment = { id: string; body: string; resolvedAt: string | null; createdAt: string; isAuthor: boolean; canManage: boolean; author: { name: string }; replies: Comment[] };
 type Revision = { id: string; title: string; createdAt: string; author: { name: string } | null };
 
 export function DocumentCollaborationPanel({ documentId, canWrite }: { documentId: string; canWrite: boolean }) {
-  const [mode, setMode] = useState<"comments" | "history" | null>(null); const [comments, setComments] = useState<Comment[]>([]); const [revisions, setRevisions] = useState<Revision[]>([]); const [body, setBody] = useState(""); const [message, setMessage] = useState("");
-  useEffect(() => { if (!mode) return; const endpoint = mode === "comments" ? "comments" : "revisions"; fetch(`/api/documents/${documentId}/${endpoint}`).then((response) => response.ok ? response.json() : []).then(mode === "comments" ? setComments : setRevisions); }, [documentId, mode]);
-  async function addComment() { if (!body.trim()) return; const response = await fetch(`/api/documents/${documentId}/comments`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body }) }); if (!response.ok) return setMessage("留言尚未儲存"); const comment = await response.json(); setComments((current) => [...current, comment]); setBody(""); setMessage("已留言"); }
-  async function restore(revisionId: string) { if (!window.confirm("要還原至此版本嗎？目前內容會保留在版本紀錄中。")) return; const response = await fetch(`/api/documents/${documentId}/revisions/${revisionId}/restore`, { method: "POST" }); if (!response.ok) return setMessage("無法還原版本"); window.location.reload(); }
-  return <section className="document-collab"><div><button className={mode === "comments" ? "active" : ""} onClick={() => setMode(mode === "comments" ? null : "comments")}>💬 留言</button><button className={mode === "history" ? "active" : ""} onClick={() => setMode(mode === "history" ? null : "history")}>◷ 歷史版本</button></div>{mode === "comments" && <div className="collab-panel"><div className="comment-list">{comments.length ? comments.map((comment) => <article key={comment.id}><strong>{comment.author.name}</strong><time>{new Date(comment.createdAt).toLocaleString()}</time><p>{comment.body}</p></article>) : <p className="hint">尚無留言。用留言保留工程決策與待確認事項。</p>}</div>{canWrite ? <><textarea value={body} onChange={(event) => setBody(event.target.value)} placeholder="留下留言，使用 @姓名 提及同事" /><button className="collab-primary" onClick={addComment}>新增留言</button></> : <p className="hint">你目前為檢視者，只能閱讀留言。</p>}</div>}{mode === "history" && <div className="collab-panel revision-list">{revisions.length ? revisions.map((revision) => <article key={revision.id}><div><strong>{revision.title}</strong><span>{revision.author?.name || "未知使用者"} · {new Date(revision.createdAt).toLocaleString()}</span></div>{canWrite && <button onClick={() => restore(revision.id)}>還原</button>}</article>) : <p className="hint">第一次儲存後，版本歷史會自動建立。</p>}</div>}{message && <span className="collab-notice">{message}</span>}</section>;
+  const [mode, setMode] = useState<"comments" | "history" | null>(null);
+  const [comments, setComments] = useState<Comment[]>([]);
+  const [revisions, setRevisions] = useState<Revision[]>([]);
+  const [body, setBody] = useState("");
+  const [replyTo, setReplyTo] = useState<string | null>(null);
+  const [replyBody, setReplyBody] = useState("");
+  const [message, setMessage] = useState("");
+
+  async function load() {
+    const endpoint = mode === "comments" ? "comments" : "revisions";
+    const response = await fetch(`/api/documents/${documentId}/${endpoint}`);
+    if (!response.ok) return setMessage("無法讀取協作資料");
+    const data = await response.json();
+    if (mode === "comments") setComments(data); else setRevisions(data);
+  }
+  useEffect(() => { if (mode) void load(); }, [documentId, mode]);
+  async function addComment(parentId?: string) {
+    const value = parentId ? replyBody : body;
+    if (!value.trim()) return;
+    const response = await fetch(`/api/documents/${documentId}/comments`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ body: value, parentId }) });
+    if (!response.ok) return setMessage("留言尚未儲存");
+    setBody(""); setReplyBody(""); setReplyTo(null); setMessage(parentId ? "已新增回覆，對方會收到通知" : "已留言");
+    await load();
+  }
+  async function updateComment(commentId: string, resolved: boolean) {
+    const response = await fetch(`/api/documents/${documentId}/comments/${commentId}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ resolved }) });
+    if (!response.ok) return setMessage("無法更新留言狀態");
+    await load();
+  }
+  async function deleteComment(commentId: string) {
+    if (!window.confirm("確定刪除此留言嗎？其回覆也會一併移除。")) return;
+    const response = await fetch(`/api/documents/${documentId}/comments/${commentId}`, { method: "DELETE" });
+    if (!response.ok) return setMessage("無法刪除留言");
+    setMessage("已刪除留言"); await load();
+  }
+  async function restore(revisionId: string) {
+    if (!window.confirm("要還原至此版本嗎？目前內容會保留在版本紀錄中。")) return;
+    const response = await fetch(`/api/documents/${documentId}/revisions/${revisionId}/restore`, { method: "POST" });
+    if (!response.ok) return setMessage("無法還原版本");
+    window.location.reload();
+  }
+  function commentItem(comment: Comment, reply = false) {
+    return <article key={comment.id} className={comment.resolvedAt ? "resolved" : ""}><div className="comment-meta"><strong>{comment.author.name}</strong><time>{new Date(comment.createdAt).toLocaleString()}</time>{comment.resolvedAt && <span>已解決</span>}</div><p>{comment.body}</p>{canWrite && <div className="comment-actions">{!reply && <button onClick={() => setReplyTo(replyTo === comment.id ? null : comment.id)}>回覆</button>}<button onClick={() => void updateComment(comment.id, !comment.resolvedAt)}>{comment.resolvedAt ? "重新開啟" : "標記解決"}</button>{comment.canManage && <button className="danger" onClick={() => void deleteComment(comment.id)}>刪除</button>}</div>}{!reply && replyTo === comment.id && <div className="comment-reply"><textarea autoFocus value={replyBody} onChange={(event) => setReplyBody(event.target.value)} placeholder={`回覆 ${comment.author.name}…`} /><div><button className="collab-primary" onClick={() => void addComment(comment.id)}>送出回覆</button><button onClick={() => { setReplyTo(null); setReplyBody(""); }}>取消</button></div></div>}{!reply && comment.replies.length > 0 && <div className="comment-replies">{comment.replies.map((item) => commentItem(item, true))}</div>}</article>;
+  }
+  return <section className="document-collab"><div><button className={mode === "comments" ? "active" : ""} onClick={() => setMode(mode === "comments" ? null : "comments")}>💬 留言</button><button className={mode === "history" ? "active" : ""} onClick={() => setMode(mode === "history" ? null : "history")}>◷ 歷史版本</button></div>{mode === "comments" && <div className="collab-panel"><div className="comment-list">{comments.length ? comments.map((comment) => commentItem(comment)) : <p className="hint">尚無留言。用留言保留工程決策與待確認事項。</p>}</div>{canWrite ? <><textarea value={body} onChange={(event) => setBody(event.target.value)} placeholder="留下留言；回覆會通知原留言者" /><button className="collab-primary" onClick={() => void addComment()}>新增留言</button></> : <p className="hint">你目前為檢視者，只能閱讀留言。</p>}</div>}{mode === "history" && <div className="collab-panel revision-list">{revisions.length ? revisions.map((revision) => <article key={revision.id}><div><strong>{revision.title}</strong><span>{revision.author?.name || "未知使用者"} · {new Date(revision.createdAt).toLocaleString()}</span></div>{canWrite && <button onClick={() => void restore(revision.id)}>還原</button>}</article>) : <p className="hint">第一次儲存後，版本歷史會自動建立。</p>}</div>}{message && <span className="collab-notice">{message}</span>}</section>;
 }
