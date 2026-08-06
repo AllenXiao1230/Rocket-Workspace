@@ -1,0 +1,40 @@
+import { redirect } from "next/navigation";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { WorkspaceShell } from "@/components/workspace-shell";
+import { readDocumentMarkdown } from "@/lib/document-storage";
+
+export const dynamic = "force-dynamic";
+
+export default async function Home({ searchParams }: { searchParams: Promise<{ project?: string }> }) {
+  const session = await auth();
+  if (!session?.user?.id) redirect("/login");
+  const account = await prisma.user.findUnique({ where: { id: session.user.id }, select: { mustChangePassword: true, name: true, avatarEmoji: true } });
+  if (account?.mustChangePassword) redirect("/change-password");
+  const membership = await prisma.membership.findFirst({
+    where: { userId: session.user.id },
+    include: {
+      workspace: {
+        include: {
+          memberships: { include: { user: { select: { id: true, name: true, email: true, avatarEmoji: true } } }, orderBy: { nickname: "asc" } },
+          projects: {
+            include: {
+              documents: { where: { deletedAt: null }, orderBy: [{ position: "asc" }, { createdAt: "asc" }] },
+              databases: { include: { properties: { orderBy: { position: "asc" } }, views: { orderBy: { position: "asc" } }, rows: { orderBy: { position: "asc" } }, templates: { orderBy: { name: "asc" } }, automations: { orderBy: { createdAt: "desc" } } }, orderBy: { createdAt: "asc" } },
+              tasks: { include: { assignee: { select: { id: true, name: true, email: true } } } },
+              issues: true,
+              bomItems: true,
+              testRecords: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  if (!membership) return <main className="login"><section className="login-card"><p className="brand">Rocket Workspace</p><h1>尚未加入工作空間</h1><p className="hint">請由工作空間管理員邀請你的帳號後再登入。</p></section></main>;
+  const { project: requestedProjectId } = await searchParams;
+  const project = membership.workspace.projects.find((item) => item.id === requestedProjectId) || membership.workspace.projects[0];
+  if (!project) return <main className="login"><section className="login-card"><p className="brand">Rocket Workspace</p><h1>尚未建立專案</h1></section></main>;
+  const documents = await Promise.all(project.documents.map(async (d) => ({ ...d, content: d.content as Record<string, unknown>, markdown: await readDocumentMarkdown(d) })));
+  return <WorkspaceShell user={{ name: account?.name || session.user.name || session.user.email || "Member", avatarEmoji: account?.avatarEmoji, role: membership.role }} workspace={membership.workspace.name} workspaceId={membership.workspace.id} project={{ id: project.id, name: project.name, code: project.code }} projects={membership.workspace.projects.map((item) => ({ id: item.id, name: item.name, code: item.code }))} documents={documents} databases={project.databases.map((database) => ({ ...database, properties: database.properties.map((property) => ({ ...property, options: property.options })), views: database.views.map((view) => ({ ...view, config: view.config as Record<string, unknown> | null, filter: view.filter as Record<string, unknown> | null, sort: view.sort as Record<string, unknown> | null })), rows: database.rows.map((row) => ({ ...row, values: row.values as Record<string, unknown> })), templates: database.templates.map((template) => ({ ...template, values: template.values as Record<string, unknown> })), automations: database.automations.map((automation) => ({ ...automation, config: automation.config as Record<string, unknown> })) }))} records={{ tasks: project.tasks, issues: project.issues, bom: project.bomItems.map((item) => ({ ...item, unitCost: item.unitCost?.toString() ?? null })), tests: project.testRecords }} teamMembers={membership.workspace.memberships.map((item) => ({ id: item.id, role: item.role, nickname: item.nickname, teamGroup: item.teamGroup, jobTitle: item.jobTitle, user: item.user }))} />;
+}

@@ -1,0 +1,10 @@
+import { NextResponse } from "next/server";
+import { AutomationAction, AutomationTrigger, Prisma } from "@prisma/client";
+import { z } from "zod";
+import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
+import { canWrite, databaseAccess } from "@/lib/permissions";
+
+const schema = z.object({ name: z.string().trim().min(1).max(100), trigger: z.nativeEnum(AutomationTrigger), action: z.nativeEnum(AutomationAction), config: z.record(z.string(), z.unknown()).default({}), enabled: z.boolean().optional() });
+export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) { const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); const { id } = await params; const access = await databaseAccess(session.user.id, id); if (!access) return NextResponse.json({ error: "Not found" }, { status: 404 }); return NextResponse.json(await prisma.databaseAutomation.findMany({ where: { databaseId: id }, orderBy: { createdAt: "desc" } })); }
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) { const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); const { id } = await params; const access = await databaseAccess(session.user.id, id); if (!access || !canWrite(access.membership.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 }); const parsed = schema.safeParse(await request.json()); if (!parsed.success) return NextResponse.json({ error: "Invalid automation" }, { status: 400 }); return NextResponse.json(await prisma.databaseAutomation.create({ data: { databaseId: id, ...parsed.data, config: parsed.data.config as Prisma.InputJsonValue } }), { status: 201 }); }

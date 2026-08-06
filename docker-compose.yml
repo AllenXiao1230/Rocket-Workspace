@@ -1,0 +1,111 @@
+services:
+  app:
+    build: .
+    env_file: .env
+    environment:
+      WORKSPACE_CONTENT_DIR: /workspace-data
+      BACKUP_STATUS_DIR: /backup-status
+    command: sh -c "pnpm db:deploy && pnpm db:seed && pnpm documents:sync && pnpm start"
+    volumes: ["./workspace-data:/workspace-data", "./backups/status:/backup-status:ro"]
+    ports: ["3000:3000"]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+      minio-init: { condition: service_completed_successfully }
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3000/login"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  collab:
+    build: .
+    env_file: .env
+    command: pnpm collab
+    environment:
+      YPERSISTENCE: /collab-data
+    ports: ["127.0.0.1:1234:1234"]
+    volumes: ["collab-data:/collab-data"]
+    depends_on:
+      redis: { condition: service_started }
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:1234/"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-rocket_workspace}
+      POSTGRES_USER: ${POSTGRES_USER:-rocket}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-rocket}
+    volumes: [postgres-data:/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U rocket -d rocket_workspace"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    volumes: [redis-data:/data]
+    restart: unless-stopped
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-change-me-minio}
+    volumes: [minio-data:/data]
+    ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on: [minio]
+    environment:
+      MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_SECRET_KEY:-change-me-minio}
+      MINIO_BUCKET: ${MINIO_BUCKET:-attachments}
+    entrypoint: >
+      /bin/sh -c "until mc alias set local http://minio:9000 $$MINIO_ACCESS_KEY $$MINIO_SECRET_KEY; do sleep 2; done;
+      mc mb --ignore-existing local/$$MINIO_BUCKET"
+
+  backup:
+    build:
+      context: .
+      dockerfile: backup/Dockerfile
+    env_file: .env
+    environment:
+      PGHOST: postgres
+      PGPORT: 5432
+      PGDATABASE: ${POSTGRES_DB:-rocket_workspace}
+      PGUSER: ${POSTGRES_USER:-rocket}
+      PGPASSWORD: ${POSTGRES_PASSWORD:-rocket}
+      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
+      BACKUP_RETENTION_DAYS: ${BACKUP_RETENTION_DAYS:-14}
+    volumes:
+      - ./workspace-data:/source/workspace:ro
+      - ./backups:/backups
+    depends_on:
+      postgres: { condition: service_healthy }
+      minio-init: { condition: service_completed_successfully }
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  redis-data:
+  minio-data:
+  collab-data:

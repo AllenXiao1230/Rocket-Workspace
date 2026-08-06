@@ -1,0 +1,13 @@
+node_modules
+.next
+.git
+.env
+workspace-data
+backups
+coverage
+.github
+outputs
+work
+*.tsbuildinfo
+npm-debug.log*
+pnpm-debug.log*

@@ -1,0 +1,118 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import Collaboration from "@tiptap/extension-collaboration";
+import CollaborationCaret from "@tiptap/extension-collaboration-caret";
+import Placeholder from "@tiptap/extension-placeholder";
+import Link from "@tiptap/extension-link";
+import { Table } from "@tiptap/extension-table";
+import TableRow from "@tiptap/extension-table-row";
+import TableHeader from "@tiptap/extension-table-header";
+import TableCell from "@tiptap/extension-table-cell";
+import TaskList from "@tiptap/extension-task-list";
+import TaskItem from "@tiptap/extension-task-item";
+import Underline from "@tiptap/extension-underline";
+import { Markdown } from "@tiptap/markdown";
+import * as Y from "yjs";
+import { WebsocketProvider } from "y-websocket";
+import { IndexeddbPersistence } from "y-indexeddb";
+import { DocumentCollaborationPanel } from "@/components/document-collaboration-panel";
+import { DocumentAttachments } from "@/components/document-attachments";
+
+type DocumentData = { id: string; title: string; icon: string; content: Record<string, unknown>; markdown: string | null };
+type SaveSnapshot = { content: Record<string, unknown>; markdown: string };
+type FloatingPosition = { x: number; y: number };
+type EditorContextMenu = FloatingPosition & { kind: "table" | "selection" | "block" };
+const pageEmojiGroups = [{ label: "常用", icons: ["📄", "📝", "📌", "⭐", "💡", "✅", "📋", "📚"] }, { label: "專案", icons: ["🚀", "🛰️", "🧪", "⚙️", "🔧", "📈", "🗓️", "🎯"] }, { label: "內容", icons: ["💬", "📦", "🔗", "🗂️", "🧩", "🔒", "⚠️", "🌟"] }];
+const collaboratorColor = (name: string) => ["#7aab4d", "#3e9c8b", "#5e8fd1", "#bd7cce", "#d08052", "#ba6767"][Array.from(name).reduce((value, char) => value + char.charCodeAt(0), 0) % 6];
+const tableAtSelection = ($from: { depth: number; node: (depth: number) => { type: { name: string } } }) => Array.from({ length: $from.depth + 1 }, (_, depth) => $from.node(depth).type.name).includes("table");
+
+export function CollaborativeEditor({ document, user, editable, onCreateSubpage, onIconChange, onDelete }: { document: DocumentData; user: { name: string; role: string }; editable: boolean; onCreateSubpage?: (parentId: string) => void; onIconChange?: (icon: string) => void; onDelete?: () => void }) {
+  const collaborationRoom = document.id.startsWith("notion-") ? `document-${document.id}-notion-markdown-v2` : `document-${document.id}`;
+  const [status, setStatus] = useState(editable ? "正在連接協作服務…" : "檢視模式"); const [sourceMode, setSourceMode] = useState(false); const [sourceMarkdown, setSourceMarkdown] = useState(document.markdown || ""); const [iconPicker, setIconPicker] = useState(false); const [customIcon, setCustomIcon] = useState(document.icon || "📄"); const [slashMenu, setSlashMenu] = useState(false); const [slashPosition, setSlashPosition] = useState<FloatingPosition>({ x: 120, y: 180 }); const [tablePosition, setTablePosition] = useState<FloatingPosition | null>(null); const [contextMenu, setContextMenu] = useState<EditorContextMenu | null>(null); const [activeProvider, setActiveProvider] = useState<WebsocketProvider | null>(null); const [onlineMembers, setOnlineMembers] = useState(0);
+  const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null); const saving = useRef(false); const pending = useRef<SaveSnapshot | null>(null); const ydoc = useRef(new Y.Doc()).current; const provider = useRef<WebsocketProvider | null>(null); const editorRef = useRef<ReturnType<typeof useEditor>>(null);
+  const persist = useCallback(async () => {
+    if (saving.current || !pending.current || !editable) return;
+    const snapshot = pending.current; pending.current = null; saving.current = true;
+    try {
+      const response = await fetch(`/api/documents/${document.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(snapshot) });
+      setStatus(response.ok ? "已儲存 · Markdown 已更新" : response.status === 403 ? "唯讀角色，無法儲存" : "未儲存：將在下次變更時重試");
+    } catch { setStatus("網路中斷，內容會在恢復連線後再儲存"); pending.current = snapshot; }
+    finally { saving.current = false; if (pending.current) void persist(); }
+  }, [document.id, editable]);
+  const queueSave = useCallback((snapshot: SaveSnapshot) => {
+    if (!editable) return; pending.current = snapshot; setStatus("儲存中…"); if (saveTimer.current) clearTimeout(saveTimer.current);
+    saveTimer.current = setTimeout(() => { saveTimer.current = null; void persist(); }, 650);
+  }, [editable, persist]);
+  const editor = useEditor({ extensions: [StarterKit.configure({ undoRedo: false }), Underline, Link.configure({ openOnClick: false, autolink: true, defaultProtocol: "https" }), Table.configure({ resizable: true }), TableRow, TableHeader, TableCell, TaskList, TaskItem.configure({ nested: true }), Markdown.configure({ markedOptions: { gfm: true } }), Collaboration.configure({ document: ydoc }), ...(activeProvider ? [CollaborationCaret.configure({ provider: activeProvider, user: { name: user.name, color: collaboratorColor(user.name) } })] : []), Placeholder.configure({ placeholder: "輸入 / 開始寫作，變更會即時同步給在線成員。" })], editable, editorProps: { attributes: { "aria-label": "協作文件內容" }, handleKeyDown: (view, event) => { if (!editable) return false; const { $from } = view.state.selection; if (event.key === "/" && $from.parent.type.name === "paragraph" && !$from.parent.textContent) { const coords = view.coordsAtPos(view.state.selection.from); event.preventDefault(); setSlashPosition({ x: coords.left, y: coords.bottom + 8 }); setSlashMenu(true); return true; } if (event.key === "Escape") { setSlashMenu(false); setContextMenu(null); } return false; }, handleDOMEvents: { contextmenu: (view, event) => { if (!editable) return false; event.preventDefault(); const $from = view.state.selection.$from; setContextMenu({ x: event.clientX, y: event.clientY, kind: tableAtSelection($from) ? "table" : view.state.selection.empty ? "block" : "selection" }); return true; } } }, onSelectionUpdate: ({ editor: current }) => { if (current.isActive("table")) { const coords = current.view.coordsAtPos(current.state.selection.from); setTablePosition({ x: coords.left, y: coords.bottom + 8 }); } else setTablePosition(null); }, onUpdate: ({ editor: current }) => queueSave({ content: current.getJSON() as Record<string, unknown>, markdown: current.getMarkdown() }) }, [activeProvider]);
+  useEffect(() => { editorRef.current = editor; }, [editor]);
+  useEffect(() => { const localPersistence = new IndexeddbPersistence(`rocket-workspace-${collaborationRoom}`, ydoc); const onSynced = () => setStatus((current) => current.includes("已連線") ? current : "離線內容已復原，正在連線…"); localPersistence.on("synced", onSynced); return () => { localPersistence.off("synced", onSynced); void localPersistence.destroy(); }; }, [collaborationRoom, ydoc]);
+  useEffect(() => {
+    let cancelled = false;
+    async function connect() {
+      try {
+        const response = await fetch(`/api/documents/${document.id}/collaboration-token`, { method: "POST" }); if (!response.ok) throw new Error("token");
+        const { token, readOnly } = await response.json() as { token?: string; readOnly?: boolean }; if (cancelled) return; if (readOnly || !token) { setStatus("檢視模式 · 權限保護的即時編輯已停用"); return; }
+        const url = process.env.NEXT_PUBLIC_COLLABORATION_URL || "ws://localhost:1234";
+        const nextProvider = new WebsocketProvider(url, collaborationRoom, ydoc, { params: { token } }); provider.current = nextProvider; setActiveProvider(nextProvider);
+        nextProvider.on("status", ({ status: nextStatus }: { status: string }) => setStatus(nextStatus === "connected" ? (editable ? "已連線 · 即時協作已啟用" : "檢視模式 · 即時內容已連線") : "協作服務重新連線中…"));
+        const updatePresence = () => setOnlineMembers(Array.from(nextProvider.awareness.getStates().values()).filter((value) => Boolean((value as { user?: { name?: string } }).user?.name)).length);
+        nextProvider.awareness.on("change", updatePresence); updatePresence();
+        const seedEmptyDocument = () => {
+          const current = editorRef.current;
+          if (!current || current.getText().trim()) return;
+          const source = document.markdown || document.content;
+          current.commands.setContent(source, document.markdown ? { contentType: "markdown" } : undefined);
+        };
+        nextProvider.on("sync", (synced: boolean) => {
+          if (!synced) return;
+          // A websocket can briefly report "disconnected" while its initial
+          // Yjs handshake is settling. A completed sync is the reliable
+          // signal that this document is ready for collaboration.
+          setStatus(editable ? "已連線 · 即時協作已啟用" : "檢視模式 · 即時內容已連線");
+          queueMicrotask(seedEmptyDocument);
+        });
+        // A fast local connection can finish synchronising before the listener is
+        // attached. Checking the current state makes the initial seed reliable.
+        if (nextProvider.synced) queueMicrotask(seedEmptyDocument);
+      } catch { setStatus(editable ? "協作服務不可用；仍會嘗試儲存內容。" : "檢視模式 · 協作服務不可用"); }
+    }
+    void connect(); return () => { cancelled = true; if (saveTimer.current) clearTimeout(saveTimer.current); void persist(); provider.current?.destroy(); provider.current = null; setActiveProvider(null); ydoc.destroy(); };
+  }, [collaborationRoom, document.content, document.id, document.markdown, editable, persist, ydoc]);
+  const updateTitle = useCallback((title: string) => { if (!editable || !title.trim()) return; void fetch(`/api/documents/${document.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: title.trim() }) }).then((response) => setStatus(response.ok ? "標題已儲存" : "標題未儲存")); }, [document.id, editable]);
+  function saveIcon(icon: string) { if (!editable || !icon.trim()) return; void fetch(`/api/documents/${document.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ icon: icon.trim() }) }).then(async (response) => { const result = await response.json(); if (!response.ok) return setStatus(result.error || "頁面圖標未儲存"); onIconChange?.(result.icon); setCustomIcon(result.icon); setIconPicker(false); setStatus("頁面圖標已更新"); }); }
+  function setLink() { const href = window.prompt("連結網址"); if (href) editor?.chain().focus().extendMarkRange("link").setLink({ href }).run(); }
+  function openSource() { setSourceMarkdown(editor?.getMarkdown() || document.markdown || ""); setSourceMode(true); }
+  function applySource() { if (!editor || !editable) return; try { editor.commands.setContent(sourceMarkdown, { contentType: "markdown" }); setSourceMode(false); setStatus("Markdown 已套用並等待儲存"); } catch { setStatus("Markdown 格式無法解析，未改動文件"); } }
+  async function reloadFromFile() { const response = await fetch(`/api/documents/${document.id}/markdown`, { cache: "no-store" }); const result = await response.json(); if (!response.ok) return setStatus(result.error || "無法讀取 Markdown 檔案"); setSourceMarkdown(result.markdown); if (!editable) return setSourceMode(true); if (!window.confirm("要以檔案中的 Markdown 覆蓋目前編輯器內容嗎？未儲存的內容會被取代。")) return setSourceMode(true); editor?.commands.setContent(result.markdown, { contentType: "markdown" }); setSourceMode(false); setStatus("已從專案資料夾重新載入 Markdown"); }
+  async function copyMarkdown() { const markdown = editor?.getMarkdown() || sourceMarkdown; try { await navigator.clipboard.writeText(markdown); setStatus("Markdown 已複製到剪貼簿"); } catch { setStatus("無法存取剪貼簿，請使用原始碼模式複製"); } }
+  const command = (run: () => boolean) => () => { if (editable) run(); };
+  const closeFloatingMenus = () => { setSlashMenu(false); setContextMenu(null); };
+  const menuAction = (run: () => void) => () => { run(); closeFloatingMenus(); };
+  function openSlashMenu() { if (!editor || !editable) return; const coords = editor.view.coordsAtPos(editor.state.selection.from); setSlashPosition({ x: coords.left, y: coords.bottom + 8 }); setContextMenu(null); setSlashMenu((current) => !current); }
+  function tableAction(action: "addColumnBefore" | "addColumnAfter" | "deleteColumn" | "addRowBefore" | "addRowAfter" | "deleteRow" | "mergeCells" | "splitCell" | "toggleHeaderRow" | "deleteTable") {
+    if (!editor || !editable) return; const chain = editor.chain().focus();
+    if (action === "addColumnBefore") chain.addColumnBefore().run(); else if (action === "addColumnAfter") chain.addColumnAfter().run(); else if (action === "deleteColumn") chain.deleteColumn().run(); else if (action === "addRowBefore") chain.addRowBefore().run(); else if (action === "addRowAfter") chain.addRowAfter().run(); else if (action === "deleteRow") chain.deleteRow().run(); else if (action === "mergeCells") chain.mergeCells().run(); else if (action === "splitCell") chain.splitCell().run(); else if (action === "toggleHeaderRow") chain.toggleHeaderRow().run(); else chain.deleteTable().run();
+    setContextMenu(null);
+  }
+  function insertBlock(kind: "paragraph" | "heading" | "task" | "quote" | "code" | "table" | "divider") {
+    if (!editor || !editable) return; closeFloatingMenus(); const chain = editor.chain().focus();
+    if (kind === "paragraph") chain.setParagraph().run();
+    else if (kind === "heading") chain.toggleHeading({ level: 2 }).run();
+    else if (kind === "task") chain.toggleTaskList().run();
+    else if (kind === "quote") chain.toggleBlockquote().run();
+    else if (kind === "code") chain.toggleCodeBlock().run();
+    else if (kind === "table") chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
+    else chain.setHorizontalRule().run();
+  }
+  return <article className="document"><div className="document-title-row"><button className="document-icon" aria-label="變更頁面圖標" disabled={!editable} onClick={() => { setCustomIcon(document.icon || "📄"); setIconPicker(true); }}>{document.icon || "📄"}</button><input className="document-title" aria-label="文件標題" defaultValue={document.title} readOnly={!editable} onBlur={(event) => updateTitle(event.currentTarget.value)} /></div>
+    {iconPicker && <div className="emoji-picker-backdrop" role="presentation" onMouseDown={() => setIconPicker(false)}><section className="emoji-picker" role="dialog" aria-modal="true" aria-label="選擇頁面圖標" onMouseDown={(event) => event.stopPropagation()}><header><div><strong>選擇頁面圖標</strong><span>選取 Emoji 後會立即套用。</span></div><button aria-label="關閉" onClick={() => setIconPicker(false)}>×</button></header>{pageEmojiGroups.map((group) => <div className="emoji-group" key={group.label}><span>{group.label}</span><div>{group.icons.map((icon) => <button key={icon} className={document.icon === icon ? "active" : ""} onClick={() => saveIcon(icon)}>{icon}</button>)}</div></div>)}<form className="emoji-custom" onSubmit={(event) => { event.preventDefault(); saveIcon(customIcon); }}><label>自訂 Emoji<input value={customIcon} onChange={(event) => setCustomIcon(event.target.value)} maxLength={16} /></label><button type="submit">套用</button></form></section></div>}
+    <div className="editor-toolbar" aria-label="文件格式工具列"><button disabled={!editable} onClick={openSlashMenu}>＋ 區塊</button><button className={editor?.isActive("bold") ? "active" : ""} disabled={!editable} onClick={command(() => editor?.chain().focus().toggleBold().run() || false)} aria-label="粗體"><b>B</b></button><button className={editor?.isActive("italic") ? "active" : ""} disabled={!editable} onClick={command(() => editor?.chain().focus().toggleItalic().run() || false)} aria-label="斜體"><i>I</i></button><button className={editor?.isActive("underline") ? "active" : ""} disabled={!editable} onClick={command(() => editor?.chain().focus().toggleUnderline().run() || false)} aria-label="底線"><u>U</u></button><button className={editor?.isActive("strike") ? "active" : ""} disabled={!editable} onClick={command(() => editor?.chain().focus().toggleStrike().run() || false)} aria-label="刪除線">S</button><button disabled={!editable} onClick={command(() => editor?.chain().focus().unsetAllMarks().clearNodes().run() || false)}>清除格式</button><span /><button className={editor?.isActive("heading", { level: 1 }) ? "active" : ""} disabled={!editable} onClick={command(() => editor?.chain().focus().toggleHeading({ level: 1 }).run() || false)}>H1</button><button className={editor?.isActive("heading", { level: 2 }) ? "active" : ""} disabled={!editable} onClick={command(() => editor?.chain().focus().toggleHeading({ level: 2 }).run() || false)}>H2</button><button className={editor?.isActive("heading", { level: 3 }) ? "active" : ""} disabled={!editable} onClick={command(() => editor?.chain().focus().toggleHeading({ level: 3 }).run() || false)}>H3</button><button className={editor?.isActive("bulletList") ? "active" : ""} disabled={!editable} onClick={command(() => editor?.chain().focus().toggleBulletList().run() || false)}>• 清單</button><button className={editor?.isActive("orderedList") ? "active" : ""} disabled={!editable} onClick={command(() => editor?.chain().focus().toggleOrderedList().run() || false)}>1. 清單</button><button className={editor?.isActive("taskList") ? "active" : ""} disabled={!editable} onClick={command(() => editor?.chain().focus().toggleTaskList().run() || false)}>☑ 待辦</button><button className={editor?.isActive("blockquote") ? "active" : ""} disabled={!editable} onClick={command(() => editor?.chain().focus().toggleBlockquote().run() || false)}>❝ 提示</button><button className={editor?.isActive("codeBlock") ? "active" : ""} disabled={!editable} onClick={command(() => editor?.chain().focus().toggleCodeBlock().run() || false)}>&lt;/&gt;</button><button disabled={!editable} onClick={command(() => editor?.chain().focus().setHorizontalRule().run() || false)}>— 分隔線</button><button disabled={!editable} onClick={command(() => editor?.chain().focus().insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run() || false)}>▦ 表格</button><button className={editor?.isActive("link") ? "active" : ""} disabled={!editable} onClick={setLink}>↗ 連結</button><span /><button disabled={!editable} onClick={command(() => editor?.chain().focus().undo().run() || false)} aria-label="復原">↶</button><button disabled={!editable} onClick={command(() => editor?.chain().focus().redo().run() || false)} aria-label="重做">↷</button><button onClick={openSource}>MD 原始碼</button><button onClick={() => void reloadFromFile()}>讀取檔案</button><button onClick={() => void copyMarkdown()}>複製 MD</button><a href={`/api/documents/${document.id}/markdown?download=1`}>下載 .md</a>{editable && <><button onClick={() => onCreateSubpage?.(document.id)}>＋ 子頁面</button><button className="editor-danger" onClick={() => { if (window.confirm(`確定要刪除「${document.title}」嗎？`)) onDelete?.(); }}>刪除頁面</button></>}</div>
+    {slashMenu && <div className="slash-menu floating-menu" style={{ left: slashPosition.x, top: slashPosition.y }} role="menu" aria-label="新增內容區塊"><p>插入區塊 <kbd>Esc</kbd> 關閉</p><div><button onClick={() => insertBlock("paragraph")}>¶ 文字</button><button onClick={() => insertBlock("heading")}>H 標題</button><button onClick={() => insertBlock("task")}>☑ 待辦清單</button><button onClick={() => insertBlock("quote")}>❝ 提示區塊</button><button onClick={() => insertBlock("table")}>▦ 表格</button><button onClick={() => insertBlock("code")}>{"</>"} 程式碼</button><button onClick={() => insertBlock("divider")}>— 分隔線</button></div></div>}
+    {editor?.isActive("table") && editable && tablePosition && <div className="table-toolbar floating-menu" style={{ left: tablePosition.x, top: tablePosition.y }} aria-label="表格操作" onMouseDown={(event) => event.preventDefault()}><span>表格操作</span><button onClick={() => tableAction("addColumnBefore")}>欄＋左</button><button onClick={() => tableAction("addColumnAfter")}>欄＋右</button><button onClick={() => tableAction("deleteColumn")}>刪欄</button><button onClick={() => tableAction("addRowBefore")}>列＋上</button><button onClick={() => tableAction("addRowAfter")}>列＋下</button><button onClick={() => tableAction("deleteRow")}>刪列</button><button onClick={() => tableAction("mergeCells")}>合併儲存格</button><button onClick={() => tableAction("splitCell")}>分割儲存格</button><button onClick={() => tableAction("toggleHeaderRow")}>切換標題列</button><button className="editor-danger" onClick={() => tableAction("deleteTable")}>刪除表格</button></div>}
+    {contextMenu && <div className="editor-context-menu floating-menu" role="menu" style={{ left: contextMenu.x, top: contextMenu.y }} onMouseDown={(event) => event.preventDefault()}>{contextMenu.kind === "table" ? <><strong>表格</strong><button onClick={() => tableAction("addRowAfter")}>新增下一列</button><button onClick={() => tableAction("addColumnAfter")}>新增右側欄</button><button onClick={() => tableAction("mergeCells")}>合併儲存格</button><button onClick={() => tableAction("deleteRow")}>刪除此列</button><button className="danger" onClick={() => tableAction("deleteTable")}>刪除表格</button></> : contextMenu.kind === "selection" ? <><strong>已選取文字</strong><button onClick={menuAction(() => { editor?.chain().focus().toggleBold().run(); })}>粗體</button><button onClick={menuAction(() => { editor?.chain().focus().toggleItalic().run(); })}>斜體</button><button onClick={menuAction(() => { editor?.chain().focus().toggleUnderline().run(); })}>底線</button><button onClick={menuAction(setLink)}>加入連結</button><button onClick={menuAction(() => { editor?.chain().focus().unsetAllMarks().run(); })}>清除格式</button></> : <><strong>目前區塊</strong><button onClick={menuAction(() => insertBlock("heading"))}>轉為標題</button><button onClick={menuAction(() => { editor?.chain().focus().toggleBulletList().run(); })}>轉為清單</button><button onClick={menuAction(() => insertBlock("task"))}>轉為待辦</button><button onClick={menuAction(() => insertBlock("quote"))}>轉為提示</button><button onClick={menuAction(() => insertBlock("table"))}>插入表格</button></>}</div>}
+    {sourceMode ? <section className="markdown-source"><div><strong>Markdown 原始碼</strong><span>套用後會轉成可協作的區塊；不支援的語法會保留為一般文字。</span></div><textarea aria-label="Markdown 原始碼" value={sourceMarkdown} readOnly={!editable} onChange={(event) => setSourceMarkdown(event.target.value)} spellCheck={false} /> <footer>{editable && <button className="collab-primary" onClick={applySource}>套用 Markdown</button>}<button className="source-close" onClick={() => setSourceMode(false)}>關閉</button></footer></section> : <EditorContent editor={editor} />}
+    <p className="editor-status">{status}{onlineMembers ? ` · 線上 ${onlineMembers} 位` : ""}</p><DocumentCollaborationPanel documentId={document.id} canWrite={editable} /><DocumentAttachments documentId={document.id} canWrite={editable} /></article>;
+}
