@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canWrite, documentAccess } from "@/lib/permissions";
-import { readDocumentMarkdown, writeDocumentMarkdown } from "@/lib/document-storage";
+import { readDocumentMarkdown, readDocumentMarkdownSnapshot, writeDocumentMarkdown } from "@/lib/document-storage";
 
 export async function POST(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth();
@@ -14,7 +14,7 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
   const markdown = await readDocumentMarkdown(source);
   const max = await prisma.document.aggregate({ where: { projectId: source.projectId, parentId: source.parentId, deletedAt: null }, _max: { position: true } });
   const document = await prisma.document.create({ data: { projectId: source.projectId, parentId: source.parentId, title: `${source.title} 副本`, icon: source.icon, content: source.content as never, position: (max._max.position ?? -1) + 1 } });
-  await writeDocumentMarkdown(document, markdown ?? undefined);
+  await writeDocumentMarkdown(document, markdown ?? undefined); const snapshot = await readDocumentMarkdownSnapshot(document); const saved = snapshot ? await prisma.document.update({ where: { id: document.id }, data: { markdownHash: snapshot.contentHash } }) : document;
   await prisma.auditEvent.create({ data: { userId: session.user.id, action: "document.duplicated", entity: "document", entityId: document.id } });
-  return NextResponse.json(document, { status: 201 });
+  return NextResponse.json(saved, { status: 201 });
 }

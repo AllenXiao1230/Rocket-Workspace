@@ -3,7 +3,7 @@ import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canWrite, projectAccess } from "@/lib/permissions";
-import { writeDocumentMarkdown } from "@/lib/document-storage";
+import { readDocumentMarkdownSnapshot, writeDocumentMarkdown } from "@/lib/document-storage";
 
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -18,5 +18,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const max = await prisma.document.aggregate({ where: { projectId: id, parentId: parsed.data.parentId ?? null, deletedAt: null }, _max: { position: true } });
   const document = await prisma.document.create({ data: { projectId: id, parentId: parsed.data.parentId ?? null, title: parsed.data.title, icon: parsed.data.icon || "📄", position: (max._max.position ?? -1) + 1 } });
   await writeDocumentMarkdown(document);
-  return NextResponse.json(document, { status: 201 });
+  const snapshot = await readDocumentMarkdownSnapshot(document);
+  const saved = snapshot ? await prisma.document.update({ where: { id: document.id }, data: { markdownHash: snapshot.contentHash } }) : document;
+  return NextResponse.json(saved, { status: 201 });
 }

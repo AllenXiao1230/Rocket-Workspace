@@ -4,7 +4,7 @@ import { Prisma } from "@prisma/client";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canWrite, documentAccess } from "@/lib/permissions";
-import { readDocumentMarkdown, writeDocumentMarkdown } from "@/lib/document-storage";
+import { readDocumentMarkdown, readDocumentMarkdownSnapshot, writeDocumentMarkdown } from "@/lib/document-storage";
 
 const updateSchema = z.object({ title: z.string().trim().min(1).max(180).optional(), icon: z.string().trim().min(1).max(16).optional(), parentId: z.string().cuid().nullable().optional(), position: z.number().int().min(0).max(100_000).optional(), content: z.record(z.string(), z.unknown()).optional(), markdown: z.string().max(2_000_000).optional() });
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -33,6 +33,8 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
     return tx.document.update({ where: { id }, data: { title: parsed.data.title, icon: parsed.data.icon, content: parsed.data.content as Prisma.InputJsonValue | undefined } });
   });
   await writeDocumentMarkdown(document, parsed.data.markdown ?? priorMarkdown ?? undefined);
+  const markdownSnapshot = await readDocumentMarkdownSnapshot(document);
+  if (markdownSnapshot) await prisma.document.update({ where: { id: document.id }, data: { markdownHash: markdownSnapshot.contentHash } });
   await prisma.auditEvent.create({ data: { userId: session.user.id, action: "document.updated", entity: "document", entityId: id } });
   const documents = await prisma.document.findMany({ where: { projectId: prior.projectId, deletedAt: null }, select: { id: true, parentId: true, position: true } });
   return NextResponse.json({ id: document.id, icon: document.icon, parentId: document.parentId, position: document.position, updatedAt: document.updatedAt, documents });

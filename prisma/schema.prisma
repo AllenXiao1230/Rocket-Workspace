@@ -231,6 +231,7 @@ model Document {
   children  Document[] @relation("DocumentTree")
   deletedAt DateTime?
   deletionBatchId String?
+  markdownHash String?
   updatedAt DateTime   @updatedAt
   createdAt DateTime   @default(now())
   attachments Attachment[]
@@ -289,6 +290,9 @@ model Task {
   priority    Int        @default(2)
   startDate   DateTime?
   dueDate     DateTime?
+  baselineStartDate DateTime?
+  baselineDueDate   DateTime?
+  estimatedHours    Float?
   projectId   String
   assigneeId  String?
   deletedAt   DateTime?

@@ -19,12 +19,12 @@ export async function writeDocumentMarkdown(document: StoredDocument, markdown?:
 }
 export async function deleteDocumentMarkdown(document: Pick<StoredDocument, "id" | "title">) { try { await unlink(documentMarkdownPath(document)); } catch (error: unknown) { if (!(error && typeof error === "object" && "code" in error && error.code === "ENOENT")) throw error; } }
 
-export type MarkdownSnapshot = { markdown: string; raw: string; hash: string; modifiedAt: string };
+export type MarkdownSnapshot = { markdown: string; raw: string; hash: string; contentHash: string; modifiedAt: string };
 export async function readDocumentMarkdownSnapshot(document: Pick<StoredDocument, "id" | "title">): Promise<MarkdownSnapshot | null> {
   try {
     const target = documentMarkdownPath(document); const [raw, metadata] = await Promise.all([readFile(target, "utf8"), stat(target)]);
     const markdown = raw.replace(/^---[\s\S]*?---\r?\n?/, "");
-    return { markdown, raw, hash: createHash("sha256").update(raw).digest("hex"), modifiedAt: metadata.mtime.toISOString() };
+    return { markdown, raw, hash: createHash("sha256").update(raw).digest("hex"), contentHash: createHash("sha256").update(markdown).digest("hex"), modifiedAt: metadata.mtime.toISOString() };
   } catch { return null; }
 }
 export async function readDocumentMarkdown(document: Pick<StoredDocument, "id" | "title">) {

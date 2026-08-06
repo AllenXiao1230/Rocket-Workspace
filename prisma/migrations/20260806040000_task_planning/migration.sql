@@ -1,0 +1,3 @@
+ALTER TABLE "Task" ADD COLUMN "baselineStartDate" TIMESTAMP(3);
+ALTER TABLE "Task" ADD COLUMN "baselineDueDate" TIMESTAMP(3);
+ALTER TABLE "Task" ADD COLUMN "estimatedHours" DOUBLE PRECISION;
