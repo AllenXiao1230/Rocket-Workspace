@@ -16,7 +16,7 @@
 - **日曆同步**：每個專案可在設定中心建立可輪替、可撤銷的標準 iCalendar（`.ics`）訂閱網址；Google Calendar、Apple Calendar、Outlook 等可唯讀同步有日期的任務與測試紀錄，權杖只儲存 SHA-256 雜湊。
 - **設定與維運**：明暗模式、主題配色、專案資訊、工作空間隔離的安全／功能開關與管理者操作紀錄；主機備份排程僅由系統管理員調整，並備份 PostgreSQL、Markdown、MinIO 附件及完整性資訊。
 - **AI 與外部整合**：可在設定中心設定 OpenAI-compatible API 或 Ollama，於「AI 與整合」頁面對話；GitHub Issue 為唯讀查詢，Webhook 可帶 HMAC SHA-256 簽章送出測試事件。每個工作空間的密鑰以 AES-256-GCM 加密存於 PostgreSQL、永不回顯；外連一律驗證 HTTPS 與私有網路位址，Ollama 僅允許受信任的內部主機。
-- **部署**：Docker Compose 一鍵啟動 Next.js、PostgreSQL、Redis、MinIO、Yjs 協作與備份服務；資料庫 migration 自動套用。
+- **部署**：Docker Compose 一鍵啟動 Next.js、PostgreSQL、Redis、MinIO、Yjs 協作、任務 scheduler 與備份服務；資料庫 migration 自動套用。
 
 ## 仍需加強／尚未完成
 
@@ -57,6 +57,9 @@
 - 在側邊欄建立、拖放或右鍵管理文件；文件會以 `.md` 同步到 `workspace-data/documents/`。
 - 文件內以 `/` 開啟區塊選單；使用 **MD 原始碼** 編輯 Markdown，使用 **讀取檔案** 明確載入外部修改。
 - 到 **任務** 模組按「啟用編輯」，在 **前置任務** 欄位以 Command（Windows/Linux：Ctrl）多選前置任務。
+- 在 **任務** 模組可切換看板並拖拉卡片改變狀態；週期任務與 SLA 提醒由 `scheduler` 容器自動處理。可在甘特圖的專案工作日曆中選擇工作日；它目前是排程設定與顯示資料，不會自動略過假日重算期限。
+- 在資料庫的 **篩選與排序** 中建立 AND／OR 條件群組與多欄排序，儲存檢視後供團隊共用。CSV 匯入要求欄名對應既有欄位名稱，單次最多 2,000 列；匯入值仍會經伺服器型別驗證。
+- BOM 與測試紀錄可附加檔案；測試報告與需求追溯矩陣可由 `GET /api/projects/<projectId>/tests/report` 下載 CSV，且仍須以登入權限存取。
 - 到 **設定中心** 管理主題、專案、團隊帳號、安全開關與該工作空間的外部整合。只有擁有者與管理員可調整工作空間設定；bootstrap 管理員同時是系統管理員，可調整主機備份排程。
 - 到 **設定中心 → 專案日曆同步** 產生訂閱網址，立刻複製到外部日曆的「透過網址訂閱」功能。網址只會顯示一次；若外流或需要換用日曆帳號，按「輪替訂閱網址」。停用後舊訂閱會回傳不存在。
 
@@ -69,6 +72,7 @@
   └─ 附件 API ─────────────────────────────── MinIO
 
 Redis：登入限速與未來背景工作／橫向協作預留
+Scheduler：週期任務產生與 SLA 即將到期站內通知
 workspace-data/documents：可讀 Markdown 文件
 backups：資料庫、Markdown 與附件備份
 `/api/calendar/<權杖>.ics`：專案任務／測試紀錄的唯讀 iCalendar 訂閱

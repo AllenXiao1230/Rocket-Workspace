@@ -17,6 +17,7 @@
 | 資料模型與 migrations | `prisma/schema.prisma`、`prisma/migrations/` |
 | Yjs 協作服務 | `apps/collab-server/` |
 | Markdown 同步 | `scripts/sync-markdown.ts`、`lib/document-storage.ts` |
+| 任務排程 | `scripts/task-scheduler.ts`、`lib/task-automation.ts` |
 | Compose 與備份 | `docker-compose.yml`、`backup/` |
 | 功能稽核與 Markdown 限制 | `docs/` |
 
@@ -30,6 +31,8 @@
 6. 資料庫結構變更必須同時修改 Prisma schema 與新增 migration；不以 `prisma db push` 取代 migration。
 7. AI、GitHub 與 Webhook API 必須先檢查工作空間權限與設定開關；未啟用時不可對外發出網路請求。使用者提供的 AI／Webhook URL 必須經 `lib/external-url.ts` 驗證，拒絕私有網路與非 HTTPS 目標；只有受 `OLLAMA_ALLOWED_HOSTS` 限制的 Ollama 可使用內部 HTTP。
 8. 建立工作空間相關稽核事件時，必須寫入 `workspaceId`，有專案內容時也要寫入 `projectId`；管理介面只能依此範圍查詢，禁止以未篩選的稽核事件清單代替。
+9. scheduler 的週期任務與 SLA 通知必須使用可重跑安全的去重條件；不可因容器重啟、排程間隔縮短或手動重跑而建立重複任務／通知。工作日曆未接入自動期限計算前，不可宣稱會自動跳過假日。
+10. 資料庫 CSV 匯入必須限制列數、驗證欄位名稱與所有值型別，並以伺服器端驗證為準；不能只依賴前端預覽。BOM／測試附件的操作也必須依專案角色檢查，且新增回收／永久刪除流程時要保留可還原性。
 
 ## 開發流程
 
@@ -45,7 +48,7 @@
    git diff --check
    ```
 
-5. 修改容器執行內容時，再執行 `docker compose --progress plain build app collab backup`，重建相關服務，檢查 `GET /api/health`（含資料庫可用性）、健康狀態與登入頁 HTTP 回應。
+5. 修改容器執行內容時，再執行 `docker compose --progress plain build app collab scheduler backup`，重建相關服務，檢查 `GET /api/health`（含資料庫可用性）、健康狀態與登入頁 HTTP 回應。
 6. 需要推送 GitHub 時，先確認 diff、測試與目標分支；不要提交使用者資料。
 
 ## 功能設計原則
@@ -56,6 +59,7 @@
 - 執行 `restore-drill` 時必須同時驗證資料庫 dump、Markdown 工作區封存與附件封存；不可只因資料庫可還原就宣稱完整備份可復原。
 - 任務相依不可自我相依、跨專案或形成循環。修改任務 API 回傳時保留 `dependencies`，避免前端編輯後遺失顯示。
 - 任務父／子關係同樣不可形成循環；CPM 僅在無環的 finish-to-start 網路上計算，偵測到環時必須回傳錯誤而非顯示假的關鍵路徑。週期任務的建立必須可重複安全執行，不能因重跑產生同一 occurrence 的重複任務。
+- 專案工作日曆目前是排程設定與 UI 資料；若未同步實作到 CPM、scheduler 與到期日計算，介面與文件必須明說不會自動避開假日。多層篩選與排序可以持久化在資料庫檢視中，但公式錯誤歷史與 Rollup 快取尚未存在。
 - 文件鎖定、送審與核准是伺服器端狀態：一般編輯者不得修改或刪除其他人鎖定的頁面（包含其子頁面）；資料庫列值、BOM 採購欄位與測試證據也必須在 API 驗證，不能只信任前端。
 - 資料庫、文件與附件要有明確的新增、編輯、刪除／回收與還原路徑；不要只做新增按鈕。
 
@@ -64,4 +68,5 @@
 - 協作服務透過 Redis 傳播 Yjs 更新與 awareness；正式水平擴容前仍須做多副本壓力與故障轉移演練。
 - 資料庫欄位採軟刪除，還原前必須保留欄位 ID，不能以重建同名欄位取代還原。
 - 沒有忘記密碼、2FA、SSO、電子郵件邀請、不可竄改稽核或完整瀏覽器端對端測試。AI／外部整合已有基礎 API，但串流、成本控管、OAuth/App 安裝、同步佇列與死信佇列仍未實作。
+- 公式錯誤沒有歷史追蹤、Rollup 尚未使用背景快取；文件圖片／影片／外部嵌入與跨文件同步區塊尚未有完整 UI。BOM／測試附件目前尚無與文件附件對等的回收與還原畫面。
 - 見 `docs/functionality-audit.md` 與 `docs/markdown-editor-audit.md`，更新功能時必須同步更新相關文件。
