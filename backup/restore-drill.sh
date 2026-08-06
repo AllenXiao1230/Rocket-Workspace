@@ -6,6 +6,10 @@ backup_root="${BACKUP_ROOT:-/backups}"
 [ -n "$backup_id" ] || { echo "Usage: restore-drill <backup-id>" >&2; exit 64; }
 dump_file="$backup_root/database/$backup_id.dump"
 [ -r "$dump_file" ] || { echo "Missing database backup: $dump_file" >&2; exit 1; }
+workspace_file="$backup_root/workspace/$backup_id.tar.gz"
+attachments_file="$backup_root/attachments/$backup_id.tar.gz"
+[ -r "$workspace_file" ] || { echo "Missing workspace backup: $workspace_file" >&2; exit 1; }
+[ -r "$attachments_file" ] || { echo "Missing attachment backup: $attachments_file" >&2; exit 1; }
 
 # The drill never touches the running database. It restores into a uniquely
 # named temporary database and removes it on every exit path.
@@ -18,4 +22,11 @@ echo "Creating isolated restore-drill database: $drill_db"
 createdb --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" "$drill_db"
 pg_restore --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$drill_db" --no-owner --no-acl "$dump_file"
 psql --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$drill_db" --tuples-only --no-align --command "SELECT 'documents=' || count(*) FROM \"Document\"; SELECT 'projects=' || count(*) FROM \"Project\";"
+tar -tzf "$workspace_file" >/dev/null
+if tar -tzf "$workspace_file" | grep -Eq '(^|/)\.rocket-workspace-settings\.env$'; then
+  echo "Workspace archive contains the excluded legacy settings file." >&2
+  exit 1
+fi
+tar -tzf "$attachments_file" >/dev/null
+echo "Workspace and attachment archives passed isolated restore-drill inspection."
 echo "Restore drill passed. The temporary database will now be removed."

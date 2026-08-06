@@ -88,7 +88,7 @@ backups：資料庫、Markdown 與附件備份
 docker compose exec backup verify-backup <backup-id>
 ```
 
-這是非破壞性的完整性驗證。另可執行隔離還原演練；它會建立暫用資料庫、還原 dump、檢查核心資料表後自動刪除暫用資料庫：
+這是非破壞性的完整性驗證，並確認工作區封存不含舊版設定檔。另可執行隔離還原演練；它會建立暫用資料庫、還原 dump、檢查核心資料表與 Markdown／附件封存結構，最後自動刪除暫用資料庫：
 
 ```bash
 docker compose exec backup restore-drill <backup-id>

@@ -19,6 +19,10 @@ echo "Verifying checksums for $backup_id"
 (cd "$backup_root" && sha256sum -c "status/$backup_id.SHA256SUMS")
 echo "Verifying workspace archive"
 tar -tzf "$workspace_file" >/dev/null
+if tar -tzf "$workspace_file" | grep -Eq '(^|/)\.rocket-workspace-settings\.env$'; then
+  echo "Workspace archive contains the excluded legacy settings file." >&2
+  exit 1
+fi
 echo "Verifying attachment archive"
 tar -tzf "$attachments_file" >/dev/null
 echo "Verifying PostgreSQL dump format"
