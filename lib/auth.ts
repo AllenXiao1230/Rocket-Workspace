@@ -3,6 +3,8 @@ import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { prisma } from "@/lib/prisma";
+import { clearFailedLogins, failedLogin, loginAllowed } from "@/lib/login-rate-limit";
+import { readSecuritySettings } from "@/lib/runtime-settings";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: process.env.AUTH_TRUST_HOST === "true",
@@ -14,8 +16,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
     authorize: async (raw) => {
       const parsed = z.object({ email: z.string().email(), password: z.string().min(1) }).safeParse(raw);
       if (!parsed.success) return null;
-      const user = await prisma.user.findUnique({ where: { email: parsed.data.email.toLowerCase() } });
-      if (!user || !(await bcrypt.compare(parsed.data.password, user.passwordHash))) return null;
+      const security = await readSecuritySettings(); const email = parsed.data.email.toLowerCase();
+      if (security.loginRateLimitEnabled && !await loginAllowed(email, security.loginMaxAttempts)) return null;
+      const user = await prisma.user.findUnique({ where: { email } });
+      if (!user || !(await bcrypt.compare(parsed.data.password, user.passwordHash))) { if (security.loginRateLimitEnabled) await failedLogin(email, security.loginWindowMinutes); return null; }
+      if (security.loginRateLimitEnabled) await clearFailedLogins(email);
       return { id: user.id, email: user.email, name: user.name };
     },
   })],

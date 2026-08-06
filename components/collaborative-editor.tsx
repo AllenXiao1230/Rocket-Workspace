@@ -54,7 +54,7 @@ export function CollaborativeEditor({ document, user, editable, onCreateSubpage,
     async function connect() {
       try {
         const response = await fetch(`/api/documents/${document.id}/collaboration-token`, { method: "POST" }); if (!response.ok) throw new Error("token");
-        const { token, readOnly } = await response.json() as { token?: string; readOnly?: boolean }; if (cancelled) return; if (readOnly || !token) { setStatus("檢視模式 · 權限保護的即時編輯已停用"); return; }
+        const { token, readOnly, disabled } = await response.json() as { token?: string; readOnly?: boolean; disabled?: boolean }; if (cancelled) return; if (disabled) { setStatus("管理者已停用即時協作；內容仍會儲存至伺服器。"); return; } if (readOnly || !token) { setStatus("檢視模式 · 權限保護的即時編輯已停用"); return; }
         const url = process.env.NEXT_PUBLIC_COLLABORATION_URL || "ws://localhost:1234";
         const nextProvider = new WebsocketProvider(url, collaborationRoom, ydoc, { params: { token } }); provider.current = nextProvider; setActiveProvider(nextProvider);
         nextProvider.on("status", ({ status: nextStatus }: { status: string }) => setStatus(nextStatus === "connected" ? (editable ? "已連線 · 即時協作已啟用" : "檢視模式 · 即時內容已連線") : "協作服務重新連線中…"));
