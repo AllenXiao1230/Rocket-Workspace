@@ -9,6 +9,7 @@ const settingsSchema = z.object({
   workspaceName: z.string().trim().min(1).max(100),
   projectName: z.string().trim().min(1).max(120),
   projectCode: z.string().trim().min(2).max(32).regex(/^[A-Za-z0-9_-]+$/, "專案代碼只能使用英文字母、數字、底線或連字號"),
+  projectDescription: z.string().trim().max(1_000).nullable().optional(),
   backupIntervalHours: z.number().int().min(1).max(720),
   backupRetentionDays: z.number().int().min(1).max(3650),
   security: z.object({
@@ -48,13 +49,13 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   try {
     const [workspace, project] = await prisma.$transaction([
       prisma.workspace.update({ where: { id: result.access.project.workspaceId }, data: { name: input.data.workspaceName } }),
-      prisma.project.update({ where: { id }, data: { name: input.data.projectName, code: input.data.projectCode } }),
+      prisma.project.update({ where: { id }, data: { name: input.data.projectName, code: input.data.projectCode, description: input.data.projectDescription === undefined ? undefined : input.data.projectDescription || null } }),
     ]);
     const runtime = await readRuntimeSettings();
     await writeRuntimeSettings({ backup: { intervalHours: input.data.backupIntervalHours, retentionDays: input.data.backupRetentionDays }, security: input.data.security || runtime.security });
     await prisma.auditEvent.create({ data: { userId: result.session.user.id, action: "workspace.settings_updated", entity: "project", entityId: id } });
     const savedRuntime = await readRuntimeSettings();
-    return NextResponse.json({ workspace: { id: workspace.id, name: workspace.name, slug: workspace.slug }, project: { id: project.id, name: project.name, code: project.code }, backup: { ...savedRuntime.backup, ...(await readBackupStatus()) }, security: savedRuntime.security, canManage: true });
+    return NextResponse.json({ workspace: { id: workspace.id, name: workspace.name, slug: workspace.slug }, project: { id: project.id, name: project.name, code: project.code, description: project.description }, backup: { ...savedRuntime.backup, ...(await readBackupStatus()) }, security: savedRuntime.security, canManage: true });
   } catch (error) {
     const code = typeof error === "object" && error && "code" in error ? String(error.code) : "";
     return NextResponse.json({ error: code === "P2002" ? "此專案代碼已被使用" : "無法儲存設定" }, { status: code === "P2002" ? 409 : 500 });
