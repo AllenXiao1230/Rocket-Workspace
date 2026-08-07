@@ -114,6 +114,30 @@ docker compose exec backup restore-drill <backup-id>
 - 關閉功能只阻止新操作，不會刪除既有資料。
 - 日曆訂閱網址是高熵的唯讀 bearer 權杖，不要求外部 OAuth，也不會儲存 Google／Microsoft 密碼。把網址視為敏感連結；若外流請在設定中心輪替或停用。外部日曆的重新整理頻率由該服務決定，Rocket Workspace 不會直接寫回外部日曆。
 
+## GitHub 推送後自動部署
+
+專案內建 [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)：推送到 `main` 後，GitHub Actions 會 SSH 到伺服器，執行 `scripts/deploy-from-github.sh`。預設**不啟用**；必須由儲存庫擁有者在 GitHub 設定後才會真的部署。
+
+伺服器初次準備（只需一次）：
+
+1. 以專用 deploy 使用者把此儲存庫 clone 到固定位置，例如 `/srv/rocket-workspace`，建立不納入 Git 的 `.env`，並先成功執行一次 `docker compose up -d --build`。
+2. 讓該使用者能執行 Docker（通常加入 `docker` 群組）。若儲存庫為私有，伺服器本身也需要可讀取儲存庫的 deploy key 或 GitHub App 憑證，才能執行 `git pull`。
+3. 使腳本可執行：`chmod +x /srv/rocket-workspace/scripts/deploy-from-github.sh`。
+
+接著到 GitHub 儲存庫的 **Settings → Secrets and variables → Actions** 設定：
+
+| 類型 | 名稱 | 值 |
+| --- | --- | --- |
+| Variable | `AUTO_DEPLOY_ENABLED` | `true` 才開啟自動部署；刪除或改為其他值即可停用。 |
+| Secret | `DEPLOY_HOST` | 伺服器 DNS 名稱或 IP。 |
+| Secret | `DEPLOY_PORT` | SSH 連接埠；留白時預設 `22`。 |
+| Secret | `DEPLOY_USER` | 專用 deploy 使用者。 |
+| Secret | `DEPLOY_SSH_KEY` | GitHub Actions 用來登入伺服器的私鑰內容。 |
+| Secret | `DEPLOY_KNOWN_HOSTS` | 該伺服器的 `ssh-keyscan -H <host>` 輸出，防止 SSH 中間人攻擊。 |
+| Secret | `DEPLOY_PATH` | 伺服器上的專案絕對路徑，例如 `/srv/rocket-workspace`。 |
+
+每次 `main` 有程式碼推送時，工作流程會先確認設定完整，再於伺服器執行 `git pull --ff-only`、重建 `app`／`collab`／`scheduler`／`backup`，並輪詢 `/api/health`。純 Markdown 與 `docs/` 推送會略過部署。伺服器有未提交的**已追蹤**修改、分支不在 `main`，或 health check 失敗時會中止並在 GitHub Actions 顯示失敗，避免覆蓋本機設定或使用者資料。
+
 ## 三節點協作壓測
 
 正式部署或變更協作服務前，可在同一個 Docker 網路啟動三個獨立 Yjs 節點，讓 36 個客戶端平均分布連線並驗證每一筆更新都會跨 Redis 傳遞到所有其他客戶端。測試預設要求 p95 傳播延遲不超過 3 秒；輸出為單行 JSON，`"result":"PASS"` 才算通過。

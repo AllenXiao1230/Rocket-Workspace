@@ -18,6 +18,7 @@
 | Yjs 協作服務 | `apps/collab-server/` |
 | Markdown 同步 | `scripts/sync-markdown.ts`、`lib/document-storage.ts` |
 | 任務排程 | `scripts/task-scheduler.ts`、`lib/task-automation.ts` |
+| GitHub 自動部署 | `.github/workflows/deploy.yml`、`scripts/deploy-from-github.sh` |
 | Compose 與備份 | `docker-compose.yml`、`backup/` |
 | 功能稽核與 Markdown 限制 | `docs/` |
 
@@ -34,6 +35,7 @@
 9. scheduler 的週期任務與 SLA 通知必須使用可重跑安全的去重條件；不可因容器重啟、排程間隔縮短或手動重跑而建立重複任務／通知。工作日曆未接入自動期限計算前，不可宣稱會自動跳過假日。
 10. 資料庫 CSV 匯入必須限制列數、驗證欄位名稱與所有值型別，並以伺服器端驗證為準；不能只依賴前端預覽。BOM／測試附件的操作也必須依專案角色檢查，且新增回收／永久刪除流程時要保留可還原性。
 11. 文件媒體節點僅接受 HTTPS 外部 URL；圖片可使用權限保護的 `/api/attachments?id=<id>`。不得接受 `data:`、`javascript:`、HTTP 或其他相對路徑，iframe 必須維持 sandbox 與嚴格 referrer policy。
+12. 自動部署只能經 GitHub Actions SSH 觸發，且預設由 `AUTO_DEPLOY_ENABLED` repository variable 關閉。伺服器腳本只能 `git pull --ff-only`；若分支不正確或有已追蹤的未提交修改必須失敗，不得以 `reset --hard` 強制部署。所有 SSH 私鑰、known_hosts、主機名稱與 `.env` 僅能存於 GitHub Secrets 或伺服器，不能提交。
 
 ## 開發流程
 
