@@ -5,6 +5,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canWrite, documentAccess } from "@/lib/permissions";
 import { readDocumentMarkdown, readDocumentMarkdownSnapshot, writeDocumentMarkdown } from "@/lib/document-storage";
+import { hasOnlySafeDocumentMedia } from "@/lib/document-content";
 
 const updateSchema = z.object({ title: z.string().trim().min(1).max(180).optional(), icon: z.string().trim().min(1).max(16).optional(), parentId: z.string().cuid().nullable().optional(), position: z.number().int().min(0).max(100_000).optional(), content: z.record(z.string(), z.unknown()).optional(), markdown: z.string().max(2_000_000).optional() });
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
@@ -13,6 +14,7 @@ export async function PATCH(request: NextRequest, { params }: { params: Promise<
   if (!access) return NextResponse.json({ error: "Not found" }, { status: 404 });
   if (!canWrite(access.membership.role)) return NextResponse.json({ error: "Read-only role" }, { status: 403 });
   const parsed = updateSchema.safeParse(await request.json()); if (!parsed.success) return NextResponse.json({ error: "Invalid document" }, { status: 400 });
+  if (parsed.data.content && !hasOnlySafeDocumentMedia(parsed.data.content)) return NextResponse.json({ error: "圖片與嵌入內容僅接受有效的 HTTPS 網址" }, { status: 400 });
   const prior = access.document; const priorMarkdown = await readDocumentMarkdown(prior);
   if (prior.lockedById && prior.lockedById !== session.user.id && !["OWNER", "ADMIN"].includes(access.membership.role)) return NextResponse.json({ error: "文件已被其他成員鎖定" }, { status: 423 });
   if (parsed.data.parentId === id) return NextResponse.json({ error: "頁面不能成為自己的子頁面" }, { status: 400 });

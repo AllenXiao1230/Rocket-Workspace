@@ -28,8 +28,10 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.799.0",
     "@prisma/client": "^6.8.2",
+    "@tiptap/core": "^3.29.2",
     "@tiptap/extension-collaboration": "^3.0.7",
     "@tiptap/extension-collaboration-caret": "^3.29.2",
+    "@tiptap/extension-image": "^3.29.2",
     "@tiptap/extension-link": "^3.29.2",
     "@tiptap/extension-placeholder": "^3.0.7",
     "@tiptap/extension-table": "^3.29.2",
