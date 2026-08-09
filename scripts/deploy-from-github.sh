@@ -23,6 +23,10 @@ fi
 git fetch --prune origin "$deploy_branch"
 git pull --ff-only origin "$deploy_branch"
 
+# Embed the exact deployed commit so the web UI can compare it to the remote repository.
+export APP_COMMIT="$(git rev-parse HEAD)"
+export APP_VERSION="$(node -p 'require("./package.json").version')"
+
 # Rebuild application services only. PostgreSQL, Redis and MinIO volumes remain intact.
 docker compose up -d --build app collab scheduler backup
 

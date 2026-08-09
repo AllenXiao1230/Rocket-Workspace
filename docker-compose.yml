@@ -1,6 +1,10 @@
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        APP_VERSION: ${APP_VERSION:-0.1.0}
+        APP_COMMIT: ${APP_COMMIT:-unknown}
     env_file: .env
     environment:
       WORKSPACE_CONTENT_DIR: /workspace-data

@@ -113,6 +113,7 @@ model User {
   email        String       @unique
   name         String
   avatarEmoji  String?
+  avatarKey    String?
   passwordHash String
   mustChangePassword Boolean @default(false)
   isSystemAdmin Boolean @default(false)

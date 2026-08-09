@@ -7,13 +7,14 @@ const profileSchema = z.object({ name: z.string().trim().min(1).max(80).optional
 
 export async function GET() {
   const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { id: true, name: true, email: true, avatarEmoji: true } });
-  return NextResponse.json(user);
+  const user = await prisma.user.findUnique({ where: { id: session.user.id }, select: { id: true, name: true, email: true, avatarEmoji: true, avatarKey: true } });
+  if (!user) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  return NextResponse.json({ ...user, avatarUrl: user.avatarKey ? "/api/account/avatar" : null });
 }
 
 export async function PATCH(request: Request) {
   const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const parsed = profileSchema.safeParse(await request.json()); if (!parsed.success) return NextResponse.json({ error: "個人資料格式不正確" }, { status: 400 });
-  const user = await prisma.user.update({ where: { id: session.user.id }, data: parsed.data, select: { id: true, name: true, email: true, avatarEmoji: true } });
-  return NextResponse.json(user);
+  const user = await prisma.user.update({ where: { id: session.user.id }, data: parsed.data, select: { id: true, name: true, email: true, avatarEmoji: true, avatarKey: true } });
+  return NextResponse.json({ ...user, avatarUrl: user.avatarKey ? "/api/account/avatar" : null });
 }

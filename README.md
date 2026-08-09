@@ -6,7 +6,7 @@
 
 ## 已完成
 
-- **工作空間與權限**：登入、`OWNER`／`ADMIN`／`EDITOR`／`VIEWER` 角色、專案空間、成員名單、暱稱、所屬分組、職位與使用者 Emoji 頭像。
+- **工作空間與權限**：登入、`OWNER`／`ADMIN`／`EDITOR`／`VIEWER` 角色、專案空間、成員名單、暱稱、所屬分組、職位、Emoji 與可私密讀取的照片頭像（MinIO）。
 - **文件工作區**：樹狀頁面、子頁面、Emoji 頁面圖示、展開／收合、拖放排序與移動、複製、回收桶與還原；另有頁面屬性、鎖定、送審／核准／要求修改、反向連結、版本 Markdown diff，以及圖形化文件模板選擇器。
 - **編輯與協作**：Tiptap 區塊編輯、斜線選單、浮動表格工具、右鍵選單、連結、待辦、程式碼、引用、Callout、表格、圖片與安全外嵌（影片／網頁）、復原／重做；Yjs 即時同步、協作游標、離線 IndexedDB、LevelDB 持久化與 Redis 更新／presence 傳播，供多個協作容器共用文件狀態。
 - **Markdown 檔案**：每份文件同步至 `workspace-data/documents/`；可原始碼編輯、讀取外部修改、下載 `.md`，寫入採原子更名。外部變更提供三方合併預覽：安全情況自動選用單側變更，雙方修改時以衝突標記保留兩份文字。
@@ -137,6 +137,8 @@ docker compose exec backup restore-drill <backup-id>
 | Secret | `DEPLOY_PATH` | 伺服器上的專案絕對路徑，例如 `/srv/rocket-workspace`。 |
 
 每次 `main` 有程式碼推送時，工作流程會先確認設定完整，再於伺服器執行 `git pull --ff-only`、重建 `app`／`collab`／`scheduler`／`backup`，並輪詢 `/api/health`。純 Markdown 與 `docs/` 推送會略過部署。伺服器有未提交的**已追蹤**修改、分支不在 `main`，或 health check 失敗時會中止並在 GitHub Actions 顯示失敗，避免覆蓋本機設定或使用者資料。
+
+部署腳本會把已部署提交的 SHA 與 `package.json` 版本傳入 Docker image。登入後，右側帳號區會定期比對此 SHA 與 GitHub 儲存庫預設分支；若伺服器落後，會顯示「可更新」並彈出更新提醒。手動部署時也應帶入相同資訊：`APP_COMMIT=$(git rev-parse HEAD) APP_VERSION=$(node -p 'require("./package.json").version') docker compose up -d --build app`。如需使用 fork，請以 `UPDATE_REPOSITORY=owner/repository` 覆寫預設儲存庫。
 
 ## 三節點協作壓測
 
