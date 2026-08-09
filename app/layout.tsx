@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./table-editor.css";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 export const metadata: Metadata = {

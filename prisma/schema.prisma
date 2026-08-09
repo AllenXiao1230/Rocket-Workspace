@@ -204,7 +204,9 @@ model Database {
   name       String
   icon       String             @default("▦")
   projectId  String
+  parentDocumentId String?
   project    Project            @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  parentDocument Document?      @relation("DocumentDatabases", fields: [parentDocumentId], references: [id], onDelete: SetNull)
   properties DatabaseProperty[]
   views      DatabaseView[]
   rows       DatabaseRow[]
@@ -213,6 +215,7 @@ model Database {
   createdAt  DateTime           @default(now())
   updatedAt  DateTime           @updatedAt
   @@index([projectId, createdAt])
+  @@index([parentDocumentId])
 }
 
 model DatabaseProperty {
@@ -298,6 +301,7 @@ model Document {
   project   Project    @relation(fields: [projectId], references: [id], onDelete: Cascade)
   parent    Document?  @relation("DocumentTree", fields: [parentId], references: [id], onDelete: SetNull)
   children  Document[] @relation("DocumentTree")
+  databases Database[] @relation("DocumentDatabases")
   deletedAt DateTime?
   deletionBatchId String?
   markdownHash String?
