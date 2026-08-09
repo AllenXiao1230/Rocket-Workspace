@@ -138,7 +138,7 @@ docker compose exec backup restore-drill <backup-id>
 
 每次 `main` 有程式碼推送時，工作流程會先確認設定完整，再於伺服器執行 `git pull --ff-only`、重建 `app`／`collab`／`scheduler`／`backup`，並輪詢 `/api/health`。純 Markdown 與 `docs/` 推送會略過部署。伺服器有未提交的**已追蹤**修改、分支不在 `main`，或 health check 失敗時會中止並在 GitHub Actions 顯示失敗，避免覆蓋本機設定或使用者資料。
 
-部署腳本會把已部署提交的 SHA 與 `package.json` 版本傳入 Docker image。登入後，右側帳號區會定期比對此 SHA 與 GitHub 儲存庫預設分支；若伺服器落後，會顯示「可更新」並彈出更新提醒。手動部署時也應帶入相同資訊：`APP_COMMIT=$(git rev-parse HEAD) APP_VERSION=$(node -p 'require("./package.json").version') docker compose up -d --build app`。如需使用 fork，請以 `UPDATE_REPOSITORY=owner/repository` 覆寫預設儲存庫。
+部署腳本會把已部署提交的 SHA 與 `package.json` 版本傳入 Docker image。登入後，右側帳號區會定期比對此 SHA 與 GitHub 儲存庫預設分支；若伺服器落後，會顯示「可更新」並彈出更新提醒。手動部署時也應帶入相同資訊：`APP_COMMIT=$(git rev-parse HEAD) APP_VERSION=$(node -p 'require("./package.json").version') docker compose up -d --build app`。如需使用 fork，請以 `UPDATE_REPOSITORY=owner/repository` 覆寫預設儲存庫。若該儲存庫是私有的，請在伺服器 `.env` 加入只讀 fine-grained Token：`UPDATE_GITHUB_TOKEN=...`；此 Token 只會用於 GitHub 版本比較，絕不會送到瀏覽器或設定頁面。
 
 ## 三節點協作壓測
 
