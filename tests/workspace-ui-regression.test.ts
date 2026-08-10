@@ -27,4 +27,11 @@ describe("工作空間設定與導覽介面", () => {
     expect(source.indexOf('className="database-nav"')).toBeLessThan(source.indexOf("♻ 回收桶"));
     expect(source.indexOf("♻ 回收桶")).toBeLessThan(source.indexOf("♙ 團隊成員"));
   });
+
+  it("讓外觀與定時備份卡片使用不同的設定網格區域", () => {
+    const css = read("app/globals.css");
+    expect(css).toContain(".appearance-settings{grid-area:appearance}");
+    expect(css).toContain(".settings-grid>:nth-child(4){grid-area:backup}");
+    expect(css).not.toContain(".settings-grid .settings-card:nth-of-type(3){grid-area:backup}");
+  });
 });
