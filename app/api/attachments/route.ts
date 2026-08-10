@@ -5,6 +5,7 @@ import { enqueueAttachmentUpload, processAttachmentSyncJob } from "@/lib/attachm
 import { prisma } from "@/lib/prisma";
 import { canWrite, documentAccess } from "@/lib/permissions";
 import { readWorkspaceSettings } from "@/lib/workspace-settings";
+import { inspectUploadedFile } from "@/lib/file-signature";
 
 const maxAttachmentBytes = Number(process.env.MAX_ATTACHMENT_BYTES || 10 * 1024 * 1024);
 const allowedMimeTypes = new Set((process.env.ALLOWED_ATTACHMENT_MIME_TYPES || "").split(",").map((type) => type.trim()).filter(Boolean));
@@ -69,15 +70,17 @@ export async function POST(request: Request) {
   if (!(file instanceof File) || typeof documentId !== "string") return NextResponse.json({ error: "file and documentId required" }, { status: 400 });
   if (!file.size) return NextResponse.json({ error: "Cannot upload an empty file" }, { status: 400 });
   if (!Number.isFinite(maxAttachmentBytes) || file.size > maxAttachmentBytes) return NextResponse.json({ error: `File exceeds the ${Math.floor(maxAttachmentBytes / 1024 / 1024)} MB upload limit` }, { status: 413 });
-  if (allowedMimeTypes.size && !allowedMimeTypes.has(file.type)) return NextResponse.json({ error: "This file type is not allowed" }, { status: 415 });
   const access = await documentAccess(userId, documentId);
   if (!access || !canWrite(access.membership.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   if (!(await readWorkspaceSettings(access.document.project.workspaceId)).security.attachmentsEnabled) return NextResponse.json({ error: "管理者已停用附件上傳" }, { status: 403 });
 
   const storageKey = `${access.document.projectId}/${documentId}/${crypto.randomUUID()}-${safeFilename(file.name)}`;
   const payload = Buffer.from(await file.arrayBuffer());
+  let upload;
+  try { upload = inspectUploadedFile(payload, file.type); } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "無法驗證檔案內容" }, { status: 415 }); }
+  if (allowedMimeTypes.size && !allowedMimeTypes.has(upload.mimeType)) return NextResponse.json({ error: "This file type is not allowed" }, { status: 415 });
   const attachment = await prisma.$transaction(async (tx) => {
-    const created = await tx.attachment.create({ data: { documentId, filename: file.name, mimeType: file.type || "application/octet-stream", size: file.size, storageKey } });
+    const created = await tx.attachment.create({ data: { documentId, filename: file.name, mimeType: upload.mimeType, size: file.size, storageKey } });
     await enqueueAttachmentUpload(tx, created.id, payload);
     await tx.auditEvent.create({ data: { action: "attachment.upload_queued", entity: "attachment", entityId: created.id, userId, workspaceId: access.document.project.workspaceId, projectId: access.document.projectId, metadata: { documentId, filename: created.filename, size: created.size } } });
     return created;

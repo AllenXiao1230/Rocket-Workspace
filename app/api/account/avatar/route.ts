@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { attachmentBucket, DeleteObjectCommand, GetObjectCommand, objectStorage, PutObjectCommand } from "@/lib/object-storage";
 import { prisma } from "@/lib/prisma";
+import { inspectUploadedFile } from "@/lib/file-signature";
 
 const maxAvatarBytes = 5 * 1024 * 1024;
 const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
@@ -28,14 +29,17 @@ export async function POST(request: Request) {
   const userId = await currentUser(); if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const file = (await request.formData()).get("file");
   if (!(file instanceof File) || !file.size) return NextResponse.json({ error: "請選擇頭像圖片" }, { status: 400 });
-  if (!allowedTypes.has(file.type)) return NextResponse.json({ error: "頭像僅支援 JPG、PNG、WebP 或 GIF" }, { status: 415 });
   if (file.size > maxAvatarBytes) return NextResponse.json({ error: "頭像大小不可超過 5 MB" }, { status: 413 });
+  const payload = Buffer.from(await file.arrayBuffer());
+  let upload;
+  try { upload = inspectUploadedFile(payload, file.type); } catch (error) { return NextResponse.json({ error: error instanceof Error ? error.message : "無法驗證頭像內容" }, { status: 415 }); }
+  if (!allowedTypes.has(upload.mimeType)) return NextResponse.json({ error: "頭像僅支援 JPG、PNG、WebP 或 GIF" }, { status: 415 });
   const previous = await prisma.user.findUnique({ where: { id: userId }, select: { avatarKey: true } });
-  const extension = file.type.split("/")[1] || "img"; const key = `avatars/${userId}/${crypto.randomUUID()}.${extension}`;
+  const extension = upload.mimeType.split("/")[1] || "img"; const key = `avatars/${userId}/${crypto.randomUUID()}.${extension}`;
   try {
-    await objectStorage.send(new PutObjectCommand({ Bucket: attachmentBucket, Key: key, Body: Buffer.from(await file.arrayBuffer()), ContentType: file.type }));
+    await objectStorage.send(new PutObjectCommand({ Bucket: attachmentBucket, Key: key, Body: payload, ContentType: upload.mimeType }));
     await prisma.user.update({ where: { id: userId }, data: { avatarKey: key } });
-    await prisma.auditEvent.create({ data: { userId, action: "account.avatar_updated", entity: "user", entityId: userId, metadata: { mimeType: file.type, size: file.size } } });
+    await prisma.auditEvent.create({ data: { userId, action: "account.avatar_updated", entity: "user", entityId: userId, metadata: { mimeType: upload.mimeType, size: file.size } } });
     if (previous?.avatarKey) void objectStorage.send(new DeleteObjectCommand({ Bucket: attachmentBucket, Key: previous.avatarKey })).catch(() => undefined);
     return NextResponse.json({ avatarUrl: `/api/account/avatar?v=${encodeURIComponent(key.slice(-12))}` }, { status: 201 });
   } catch { try { await objectStorage.send(new DeleteObjectCommand({ Bucket: attachmentBucket, Key: key })); } catch { /* cleanup is best effort */ } return NextResponse.json({ error: "頭像上傳失敗" }, { status: 502 }); }
