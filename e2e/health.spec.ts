@@ -3,10 +3,18 @@ import { expect, test } from "@playwright/test";
 test("health endpoint reports every required service readiness", async ({ request }) => {
   const response = await request.get("/api/health");
   await expect(response).toBeOK();
-  await expect(response.json()).resolves.toEqual({
+  const body = await response.json();
+  expect(body).toMatchObject({
     status: "ok",
     checks: { database: "ok", objectStorage: "ok", redis: "ok", collaboration: "ok", scheduler: "ok" },
   });
+  expect(body.checks.migration).toMatch(/^\d{14}_.+/);
+});
+
+test("liveness endpoint stays independent of readiness dependencies", async ({ request }) => {
+  const response = await request.get("/api/health/live");
+  await expect(response).toBeOK();
+  await expect(response.json()).resolves.toEqual({ status: "ok" });
 });
 
 test("login screen is usable and protected attachment API rejects anonymous requests", async ({ page, request }) => {
