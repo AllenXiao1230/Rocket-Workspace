@@ -6,6 +6,10 @@ describe("external service URL validation", () => {
     await expect(validateExternalUrl("https://127.0.0.1/internal", "WEBHOOK")).rejects.toThrow("私有網路");
     await expect(validateExternalUrl("https://192.168.1.10/internal", "AI", "OPENAI_COMPATIBLE")).rejects.toThrow("私有網路");
     await expect(validateExternalUrl("https://localhost/internal", "WEBHOOK")).rejects.toThrow("私有網路");
+    await expect(validateExternalUrl("https://100.64.0.1/internal", "WEBHOOK")).rejects.toThrow("私有網路");
+    await expect(validateExternalUrl("https://198.18.0.1/internal", "WEBHOOK")).rejects.toThrow("私有網路");
+    await expect(validateExternalUrl("https://192.0.2.1/internal", "WEBHOOK")).rejects.toThrow("私有網路");
+    await expect(validateExternalUrl("https://[::]/internal", "WEBHOOK")).rejects.toThrow("私有網路");
   });
 
   it("requires HTTPS except for an explicitly allowed Ollama service", async () => {
