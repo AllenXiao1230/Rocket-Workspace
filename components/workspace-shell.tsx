@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { signOut } from "next-auth/react";
 import { CollaborativeEditor } from "@/components/collaborative-editor";
-import { DatabaseTable, type DatabaseData } from "@/components/database-view";
+import type { DatabaseData } from "@/components/database-view";
 import { WorkspaceSearch } from "@/components/workspace-search";
 import { SettingsPanel } from "@/components/settings-panel";
 import { TeamManagement, type TeamMember } from "@/components/team-management";

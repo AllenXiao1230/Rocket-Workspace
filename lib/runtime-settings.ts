@@ -25,7 +25,6 @@ const defaultInterval = Number(process.env.BACKUP_INTERVAL_HOURS || 24);
 const defaultRetention = Number(process.env.BACKUP_RETENTION_DAYS || 14);
 function positive(value: number, fallback: number, max: number, min = 1) { return Number.isInteger(value) && value >= min && value <= max ? value : fallback; }
 function enabled(value: string | undefined, fallback = true) { return value === undefined ? fallback : value !== "false"; }
-function text(value: string | undefined, fallback: string, max = 2_000) { return value && value.length <= max && !/[\r\n]/.test(value) ? value : fallback; }
 
 function defaults(): RuntimeSettings {
   return {
