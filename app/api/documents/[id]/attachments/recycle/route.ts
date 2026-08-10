@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { canWrite, documentAccess } from "@/lib/permissions";
 import { prisma } from "@/lib/prisma";
-import { attachmentBucket, DeleteObjectCommand, objectStorage } from "@/lib/object-storage";
+import { enqueueAttachmentDelete } from "@/lib/attachment-sync";
 
 export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -30,12 +30,9 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
   const attachmentId = new URL(request.url).searchParams.get("attachmentId") || "";
   const attachment = await prisma.attachment.findFirst({ where: { id: attachmentId, documentId: id, deletedAt: { not: null } } });
   if (!attachment) return NextResponse.json({ error: "找不到可永久刪除的附件" }, { status: 404 });
-  try {
-    await objectStorage.send(new DeleteObjectCommand({ Bucket: attachmentBucket, Key: attachment.storageKey }));
-    await prisma.attachment.delete({ where: { id: attachment.id } });
-    await prisma.auditEvent.create({ data: { action: "attachment.purged", entity: "attachment", entityId: attachment.id, userId: session.user.id, workspaceId: access.document.project.workspaceId, projectId: access.document.projectId, metadata: { documentId: id, filename: attachment.filename, irreversible: true } } });
-    return NextResponse.json({ ok: true });
-  } catch {
-    return NextResponse.json({ error: "無法永久刪除附件，請稍後再試" }, { status: 502 });
-  }
+  await prisma.$transaction(async (tx) => {
+    await enqueueAttachmentDelete(tx, attachment.id);
+    await tx.auditEvent.create({ data: { action: "attachment.purge_queued", entity: "attachment", entityId: attachment.id, userId: session.user.id, workspaceId: access.document.project.workspaceId, projectId: access.document.projectId, metadata: { documentId: id, filename: attachment.filename, irreversible: true } } });
+  });
+  return NextResponse.json({ ok: true, pending: true }, { status: 202 });
 }

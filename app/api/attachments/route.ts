@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
-import { attachmentBucket, DeleteObjectCommand, GetObjectCommand, objectStorage, PutObjectCommand } from "@/lib/object-storage";
+import { attachmentBucket, GetObjectCommand, objectStorage } from "@/lib/object-storage";
+import { enqueueAttachmentUpload, processAttachmentSyncJob } from "@/lib/attachment-sync";
 import { prisma } from "@/lib/prisma";
 import { canWrite, documentAccess } from "@/lib/permissions";
 import { readWorkspaceSettings } from "@/lib/workspace-settings";
@@ -31,7 +32,7 @@ export async function GET(request: Request) {
     const attachments = await prisma.attachment.findMany({
       where: { documentId, deletedAt: null },
       orderBy: { createdAt: "desc" },
-      select: { id: true, filename: true, mimeType: true, size: true, createdAt: true },
+      select: { id: true, filename: true, mimeType: true, size: true, createdAt: true, syncStatus: true },
     });
     return NextResponse.json(attachments);
   }
@@ -41,6 +42,7 @@ export async function GET(request: Request) {
   if (!attachment?.documentId) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const access = await documentAccess(userId, attachment.documentId);
   if (!access) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  if (attachment.syncStatus !== "READY") return NextResponse.json({ error: "Attachment is still synchronizing" }, { status: 409 });
 
   try {
     const object = await objectStorage.send(new GetObjectCommand({ Bucket: attachmentBucket, Key: attachment.storageKey }));
@@ -73,15 +75,16 @@ export async function POST(request: Request) {
   if (!(await readWorkspaceSettings(access.document.project.workspaceId)).security.attachmentsEnabled) return NextResponse.json({ error: "管理者已停用附件上傳" }, { status: 403 });
 
   const storageKey = `${access.document.projectId}/${documentId}/${crypto.randomUUID()}-${safeFilename(file.name)}`;
-  try {
-    await objectStorage.send(new PutObjectCommand({ Bucket: attachmentBucket, Key: storageKey, Body: Buffer.from(await file.arrayBuffer()), ContentType: file.type || "application/octet-stream" }));
-    const attachment = await prisma.attachment.create({ data: { documentId, filename: file.name, mimeType: file.type || "application/octet-stream", size: file.size, storageKey } });
-    await prisma.auditEvent.create({ data: { action: "attachment.uploaded", entity: "attachment", entityId: attachment.id, userId, workspaceId: access.document.project.workspaceId, projectId: access.document.projectId, metadata: { documentId, filename: attachment.filename, size: attachment.size } } });
-    return NextResponse.json(attachment, { status: 201 });
-  } catch {
-    try { await objectStorage.send(new DeleteObjectCommand({ Bucket: attachmentBucket, Key: storageKey })); } catch { /* The cleanup job will handle an unreachable object store. */ }
-    return NextResponse.json({ error: "Upload failed. The file was not attached." }, { status: 502 });
-  }
+  const payload = Buffer.from(await file.arrayBuffer());
+  const attachment = await prisma.$transaction(async (tx) => {
+    const created = await tx.attachment.create({ data: { documentId, filename: file.name, mimeType: file.type || "application/octet-stream", size: file.size, storageKey } });
+    await enqueueAttachmentUpload(tx, created.id, payload);
+    await tx.auditEvent.create({ data: { action: "attachment.upload_queued", entity: "attachment", entityId: created.id, userId, workspaceId: access.document.project.workspaceId, projectId: access.document.projectId, metadata: { documentId, filename: created.filename, size: created.size } } });
+    return created;
+  });
+  await processAttachmentSyncJob(attachment.id);
+  const synced = await prisma.attachment.findUnique({ where: { id: attachment.id } });
+  return NextResponse.json(synced || attachment, { status: synced?.syncStatus === "READY" ? 201 : 202 });
 }
 
 export async function DELETE(request: Request) {

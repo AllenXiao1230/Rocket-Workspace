@@ -98,6 +98,17 @@ enum DocumentSyncAction {
   DELETE
 }
 
+enum AttachmentSyncAction {
+  UPLOAD
+  DELETE
+}
+
+enum AttachmentSyncStatus {
+  PENDING
+  READY
+  FAILED
+}
+
 enum ApprovalStatus {
   DRAFT
   PENDING
@@ -678,11 +689,27 @@ model Attachment {
   testRecord      TestRecord? @relation("TestAttachments", fields: [testRecordId], references: [id], onDelete: SetNull)
   deletedAt       DateTime?
   deletionBatchId String?
+  syncStatus      AttachmentSyncStatus @default(PENDING)
+  syncError       String?
+  syncJob         AttachmentSyncJob?
   createdAt       DateTime  @default(now())
   @@index([documentId, deletedAt])
   @@index([deletionBatchId])
   @@index([bomItemId, deletedAt])
   @@index([testRecordId, deletedAt])
+}
+
+model AttachmentSyncJob {
+  id           String               @id @default(cuid())
+  action       AttachmentSyncAction
+  payload      Bytes?
+  attempts     Int                  @default(0)
+  lastError    String?
+  attachmentId String               @unique
+  attachment   Attachment           @relation(fields: [attachmentId], references: [id], onDelete: Cascade)
+  createdAt    DateTime             @default(now())
+  updatedAt    DateTime             @updatedAt
+  @@index([createdAt])
 }
 
 model AuditEvent {
