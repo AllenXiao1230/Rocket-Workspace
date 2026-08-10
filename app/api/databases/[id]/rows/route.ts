@@ -7,6 +7,15 @@ import { applyRowAutomations } from "@/lib/database-automations";
 import { AutomationTrigger } from "@prisma/client";
 import { validateRowValues } from "@/lib/database-validation";
 
+const pageSize = (value: string | null) => Math.min(250, Math.max(1, Number(value) || 100));
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { id } = await params; const access = await databaseAccess(session.user.id, id); if (!access) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const url = new URL(request.url); const cursor = url.searchParams.get("cursor"); const take = pageSize(url.searchParams.get("take"));
+  const rows = await prisma.databaseRow.findMany({ where: { databaseId: id, deletedAt: null }, orderBy: [{ position: "asc" }, { id: "asc" }], take: take + 1, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) });
+  return NextResponse.json({ rows: rows.slice(0, take), nextCursor: rows.length > take ? rows[take - 1].id : null });
+}
+
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params; const access = await databaseAccess(session.user.id, id);

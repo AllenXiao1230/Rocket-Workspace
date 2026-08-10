@@ -9,6 +9,12 @@ import { enqueueDocumentSync } from "@/lib/document-sync";
 import { hasOnlySafeDocumentMedia } from "@/lib/document-content";
 
 const updateSchema = z.object({ title: z.string().trim().min(1).max(180).optional(), icon: z.string().trim().min(1).max(16).optional(), parentId: z.string().cuid().nullable().optional(), position: z.number().int().min(0).max(100_000).optional(), content: z.record(z.string(), z.unknown()).optional(), markdown: z.string().max(2_000_000).optional() });
+export async function GET(_: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { id } = await params; const access = await documentAccess(session.user.id, id);
+  if (!access) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  return NextResponse.json({ id: access.document.id, title: access.document.title, icon: access.document.icon, content: access.document.content, markdown: await readDocumentMarkdown(access.document) });
+}
 export async function PATCH(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params; const access = await documentAccess(session.user.id, id);

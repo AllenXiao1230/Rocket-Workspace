@@ -6,6 +6,18 @@ import { prisma } from "@/lib/prisma";
 import { canWrite, projectAccess } from "@/lib/permissions";
 import { enqueueDocumentSync } from "@/lib/document-sync";
 
+const pageSize = (value: string | null) => Math.min(200, Math.max(1, Number(value) || 100));
+
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { id } = await params; const access = await projectAccess(session.user.id, id);
+  if (!access) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const url = new URL(request.url); const cursor = url.searchParams.get("cursor"); const take = pageSize(url.searchParams.get("take"));
+  const rows = await prisma.document.findMany({ where: { projectId: id, deletedAt: null }, select: { id: true, title: true, icon: true, parentId: true, position: true, updatedAt: true }, orderBy: [{ position: "asc" }, { createdAt: "asc" }], take: take + 1, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) });
+  const nextCursor = rows.length > take ? rows[take - 1].id : null;
+  return NextResponse.json({ documents: rows.slice(0, take), nextCursor });
+}
+
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params; const access = await projectAccess(session.user.id, id);
