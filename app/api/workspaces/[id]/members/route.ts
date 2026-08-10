@@ -9,8 +9,8 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params; const membership = await prisma.membership.findFirst({ where: { userId: session.user.id, workspaceId: id } });
   if (!membership) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const members = await prisma.membership.findMany({ where: { workspaceId: id }, include: { user: { select: { id: true, email: true, name: true, avatarEmoji: true } } }, orderBy: { nickname: "asc" } });
-  return NextResponse.json(members);
+  const members = await prisma.membership.findMany({ where: { workspaceId: id }, include: { user: { select: { id: true, email: true, name: true, avatarEmoji: true, avatarKey: true } } }, orderBy: { nickname: "asc" } });
+  return NextResponse.json(members.map(({ user, ...member }) => ({ ...member, user: { id: user.id, email: user.email, name: user.name, avatarEmoji: user.avatarEmoji, avatarUrl: user.avatarKey ? `/api/account/avatar?userId=${encodeURIComponent(user.id)}&v=${encodeURIComponent(user.avatarKey.slice(-12))}` : null } })));
 }
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -26,9 +26,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       const current = await tx.membership.findUnique({ where: { userId_workspaceId: { userId: user.id, workspaceId: id } } });
       const ownerCount = current?.role === "OWNER" && input.data.role !== "OWNER" ? await tx.membership.count({ where: { workspaceId: id, role: "OWNER" } }) : 2;
       if (!canChangeMembershipRole(requester.role, current?.role || null, input.data.role, ownerCount)) throw new Error("OWNER_PROTECTED");
-      const saved = await tx.membership.upsert({ where: { userId_workspaceId: { userId: user.id, workspaceId: id } }, update: { role: input.data.role, nickname: input.data.nickname, teamGroup: input.data.teamGroup, jobTitle: input.data.jobTitle }, create: { userId: user.id, workspaceId: id, role: input.data.role, nickname: input.data.nickname, teamGroup: input.data.teamGroup, jobTitle: input.data.jobTitle }, include: { user: { select: { id: true, email: true, name: true, avatarEmoji: true } } } });
+      const saved = await tx.membership.upsert({ where: { userId_workspaceId: { userId: user.id, workspaceId: id } }, update: { role: input.data.role, nickname: input.data.nickname, teamGroup: input.data.teamGroup, jobTitle: input.data.jobTitle }, create: { userId: user.id, workspaceId: id, role: input.data.role, nickname: input.data.nickname, teamGroup: input.data.teamGroup, jobTitle: input.data.jobTitle }, include: { user: { select: { id: true, email: true, name: true, avatarEmoji: true, avatarKey: true } } } });
       await tx.auditEvent.create({ data: { userId: session.user.id, action: current ? "workspace.member_updated" : "workspace.member_added", entity: "membership", entityId: saved.id, workspaceId: id, metadata: { role: input.data.role } } });
-      return saved;
+      return { ...saved, user: { id: saved.user.id, email: saved.user.email, name: saved.user.name, avatarEmoji: saved.user.avatarEmoji, avatarUrl: saved.user.avatarKey ? `/api/account/avatar?userId=${encodeURIComponent(saved.user.id)}&v=${encodeURIComponent(saved.user.avatarKey.slice(-12))}` : null } };
     }, { isolationLevel: "Serializable" });
     return NextResponse.json(member, { status: 201 });
   } catch (error) {

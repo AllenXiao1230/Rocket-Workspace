@@ -18,9 +18,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       const nextRole = input.data.role || target.role;
       const ownerCount = target.role === "OWNER" && nextRole !== "OWNER" ? await tx.membership.count({ where: { workspaceId: id, role: "OWNER" } }) : 2;
       if (!canChangeMembershipRole(requester.role, target.role, nextRole, ownerCount)) throw new Error("OWNER_PROTECTED");
-      const member = await tx.membership.update({ where: { id: memberId }, data: input.data, include: { user: { select: { id: true, email: true, name: true } } } });
+      const member = await tx.membership.update({ where: { id: memberId }, data: input.data, include: { user: { select: { id: true, email: true, name: true, avatarEmoji: true, avatarKey: true } } } });
       await tx.auditEvent.create({ data: { userId: session.user.id, action: "workspace.member_updated", entity: "membership", entityId: memberId, workspaceId: id, metadata: { changes: input.data } } });
-      return member;
+      return { ...member, user: { id: member.user.id, email: member.user.email, name: member.user.name, avatarEmoji: member.user.avatarEmoji, avatarUrl: member.user.avatarKey ? `/api/account/avatar?userId=${encodeURIComponent(member.user.id)}&v=${encodeURIComponent(member.user.avatarKey.slice(-12))}` : null } };
     }, { isolationLevel: "Serializable" });
     return NextResponse.json(member);
   } catch (error) {
