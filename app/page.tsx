@@ -31,12 +31,12 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ w
   const project = await prisma.project.findFirst({
       where: { id: projectId, workspaceId: membership.workspaceId },
       include: {
-        documents: { where: { deletedAt: null }, select: { id: true, title: true, icon: true, parentId: true, position: true, updatedAt: true }, orderBy: [{ position: "asc" }, { createdAt: "asc" }], take: 201 },
+        documents: { where: { deletedAt: null }, select: { id: true, title: true, icon: true, parentId: true, position: true, updatedAt: true }, orderBy: [{ position: "asc" }, { createdAt: "asc" }], take: 51 },
         databases: { include: { properties: { where: { deletedAt: null }, orderBy: { position: "asc" } }, views: { orderBy: { position: "asc" } }, templates: { orderBy: { name: "asc" } }, automations: { orderBy: { createdAt: "desc" } } }, orderBy: { createdAt: "asc" } },
       },
     });
   if (!project) redirect("/");
-  const documents = project.documents.slice(0, 200);
-  const nextDocumentCursor = project.documents.length > 200 ? documents.at(-1)?.id || null : null;
+  const documents = project.documents.slice(0, 50);
+  const nextDocumentCursor = project.documents.length > 50 ? documents.at(-1)?.id || null : null;
   return <WorkspaceShell user={{ id: session.user.id, name: account?.name || session.user.name || session.user.email || "Member", avatarEmoji: account?.avatarEmoji, avatarUrl: account?.avatarKey ? "/api/account/avatar" : null, role: membership.role }} workspace={workspace.name} workspaceId={workspace.id} workspaces={memberships.map((item) => item.workspace)} project={{ id: project.id, name: project.name, code: project.code }} projects={workspace.projects} documents={documents} nextDocumentCursor={nextDocumentCursor} initialActiveId={documents.some((document) => document.id === requestedDocumentId) ? requestedDocumentId : undefined} initialModule={task ? "tasks" : undefined} initialSelectedTaskId={task?.id} databases={project.databases.map((database) => ({ ...database, properties: database.properties.map((property) => ({ ...property, options: property.options })), views: database.views.map((view) => ({ ...view, config: view.config as Record<string, unknown> | null, filter: view.filter as Record<string, unknown> | null, sort: view.sort as Record<string, unknown> | null })), rows: [], templates: database.templates.map((template) => ({ ...template, values: template.values as Record<string, unknown> })), automations: database.automations.map((automation) => ({ ...automation, config: automation.config as Record<string, unknown> })) }))} records={{ tasks: [], issues: [], bom: [], tests: [] }} myTasks={[]} teamMembers={workspace.memberships.map((item) => ({ id: item.id, role: item.role, nickname: item.nickname, teamGroup: item.teamGroup, jobTitle: item.jobTitle, user: item.user }))} />;
 }
