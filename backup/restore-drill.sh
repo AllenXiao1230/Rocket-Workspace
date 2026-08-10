@@ -15,18 +15,51 @@ attachments_file="$backup_root/attachments/$backup_id.tar.gz"
 # named temporary database and removes it on every exit path.
 suffix="$(date +%s)"
 drill_db="${PGDATABASE}_restore_drill_${suffix}"
-cleanup() { dropdb --if-exists --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" "$drill_db" >/dev/null 2>&1 || true; }
+temporary_root="${TMPDIR:-/tmp}"
+drill_root="$(mktemp -d "$temporary_root/rocket-workspace-restore-drill.XXXXXX")"
+cleanup() {
+  dropdb --if-exists --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" "$drill_db" >/dev/null 2>&1 || true
+  case "$drill_root" in "$temporary_root"/rocket-workspace-restore-drill.*) rm -rf "$drill_root" ;; esac
+}
 trap cleanup EXIT INT TERM
 
 echo "Creating isolated restore-drill database: $drill_db"
 createdb --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" "$drill_db"
 pg_restore --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$drill_db" --no-owner --no-acl "$dump_file"
 psql --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$drill_db" --tuples-only --no-align --command "SELECT 'documents=' || count(*) FROM \"Document\"; SELECT 'projects=' || count(*) FROM \"Project\";"
-tar -tzf "$workspace_file" >/dev/null
+workspace_root="$drill_root/workspace"
+attachments_root="$drill_root/attachments"
+mkdir -p "$workspace_root" "$attachments_root"
+tar -xzf "$workspace_file" -C "$workspace_root"
 if tar -tzf "$workspace_file" | grep -Eq '(^|/)\.rocket-workspace-settings\.env$'; then
   echo "Workspace archive contains the excluded legacy settings file." >&2
   exit 1
 fi
-tar -tzf "$attachments_file" >/dev/null
-echo "Workspace and attachment archives passed isolated restore-drill inspection."
+tar -xzf "$attachments_file" -C "$attachments_root"
+workspace_files="$(find "$workspace_root" -type f | wc -l | tr -d ' ')"
+attachment_files="$(find "$attachments_root" -type f | wc -l | tr -d ' ')"
+sample_workspace="$(find "$workspace_root" -type f | sed -n '1p')"
+if [ -n "$sample_workspace" ]; then
+  dd if="$sample_workspace" of=/dev/null bs=64k count=1 >/dev/null 2>&1
+fi
+
+# Every READY attachment in the restored database must exist in the extracted
+# object archive. This validates the database/object-store relationship, not
+# merely the ability to list tar entries.
+psql --host="$PGHOST" --port="$PGPORT" --username="$PGUSER" --dbname="$drill_db" --tuples-only --no-align --command "SELECT \"storageKey\" FROM \"Attachment\" WHERE \"deletedAt\" IS NULL AND \"syncStatus\" = 'READY';" > "$drill_root/attachment-keys.txt"
+missing_attachments=0
+while IFS= read -r storage_key; do
+  [ -z "$storage_key" ] && continue
+  if [ ! -f "$attachments_root/attachments/$storage_key" ]; then
+    echo "Missing restored attachment object: $storage_key" >&2
+    missing_attachments=1
+  fi
+done < "$drill_root/attachment-keys.txt"
+[ "$missing_attachments" -eq 0 ] || exit 1
+
+sample_attachment="$(find "$attachments_root" -type f | sed -n '1p')"
+if [ -n "$sample_attachment" ]; then
+  dd if="$sample_attachment" of=/dev/null bs=64k count=1 >/dev/null 2>&1
+fi
+echo "Extracted $workspace_files workspace files and $attachment_files attachment objects; all READY attachment records were readable."
 echo "Restore drill passed. The temporary database will now be removed."
