@@ -17,6 +17,9 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params; const access = await projectAccess(session.user.id, id); if (!access || !canWrite(access.membership.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const input = inputSchema.safeParse(await request.json().catch(() => null)); if (!input.success) return NextResponse.json({ error: "任務模板資料不正確" }, { status: 400 });
-  try { return NextResponse.json(await prisma.taskTemplate.create({ data: { projectId: id, ...input.data } }), { status: 201 }); }
+  let template;
+  try { template = await prisma.taskTemplate.create({ data: { projectId: id, ...input.data } }); }
   catch { return NextResponse.json({ error: "模板名稱已存在" }, { status: 409 }); }
+  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "task_template.created", entity: "task_template", entityId: template.id, workspaceId: access.project.workspaceId, projectId: id, metadata: { name: template.name } } });
+  return NextResponse.json(template, { status: 201 });
 }
