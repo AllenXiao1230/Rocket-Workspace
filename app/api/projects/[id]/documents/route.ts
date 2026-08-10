@@ -32,5 +32,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (parsed.data.templateId && !template) return NextResponse.json({ error: "文件模板不存在" }, { status: 400 });
   const max = await prisma.document.aggregate({ where: { projectId: id, parentId: parsed.data.parentId ?? null, deletedAt: null }, _max: { position: true } });
   const document = await prisma.$transaction(async (tx) => { const created = await tx.document.create({ data: { projectId: id, parentId: parsed.data.parentId ?? null, title: parsed.data.title, icon: parsed.data.icon || template?.icon || "📄", content: template?.content as Prisma.InputJsonValue || undefined, properties: template?.properties as Prisma.InputJsonValue || undefined, position: (max._max.position ?? -1) + 1 } }); await enqueueDocumentSync(tx, created.id, DocumentSyncAction.WRITE); return created; });
+  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "document.created", entity: "document", entityId: document.id, workspaceId: access.project.workspaceId, projectId: id, metadata: { title: document.title, parentId: document.parentId, templateId: parsed.data.templateId ?? null } } });
   return NextResponse.json(document, { status: 201 });
 }
