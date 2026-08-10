@@ -5,7 +5,7 @@ test("health endpoint reports every required service readiness", async ({ reques
   await expect(response).toBeOK();
   await expect(response.json()).resolves.toEqual({
     status: "ok",
-    checks: { database: "ok", objectStorage: "ok", redis: "ok", collaboration: "ok" },
+    checks: { database: "ok", objectStorage: "ok", redis: "ok", collaboration: "ok", scheduler: "ok" },
   });
 });
 

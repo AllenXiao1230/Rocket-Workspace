@@ -46,6 +46,9 @@ services:
     build: .
     env_file: .env
     command: pnpm scheduler
+    environment:
+      WORKSPACE_CONTENT_DIR: /workspace-data
+    volumes: ["./workspace-data:/workspace-data"]
     depends_on:
       app: { condition: service_healthy }
     restart: unless-stopped
