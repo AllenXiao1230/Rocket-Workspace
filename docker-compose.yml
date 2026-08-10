@@ -50,7 +50,9 @@ services:
       WORKSPACE_CONTENT_DIR: /workspace-data
     volumes: ["./workspace-data:/workspace-data"]
     depends_on:
-      app: { condition: service_healthy }
+      postgres: { condition: service_healthy }
+      redis: { condition: service_started }
+      minio-init: { condition: service_completed_successfully }
     restart: unless-stopped
 
   postgres:
