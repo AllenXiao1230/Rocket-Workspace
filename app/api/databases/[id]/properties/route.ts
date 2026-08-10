@@ -21,5 +21,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (referenceIssues.length) return NextResponse.json({ error: referenceIssues[0].message }, { status: 400 });
   const max = await prisma.databaseProperty.aggregate({ where: { databaseId: id, deletedAt: null }, _max: { position: true } });
   const property = await prisma.databaseProperty.create({ data: { databaseId: id, name: parsed.data.name, type: parsed.data.type, options: parsed.data.options as Prisma.InputJsonValue | undefined, position: (max._max.position ?? -1) + 1 } });
+  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "database_property.created", entity: "database_property", entityId: property.id, workspaceId: access.database.project.workspaceId, projectId: access.database.projectId, metadata: { databaseId: id, name: property.name, type: property.type, position: property.position } } });
   return NextResponse.json(property, { status: 201 });
 }
