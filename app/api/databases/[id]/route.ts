@@ -4,6 +4,13 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canWrite, databaseAccess } from "@/lib/permissions";
 
+export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { id } = await params; const access = await databaseAccess(session.user.id, id);
+  if (!access) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  return NextResponse.json(await prisma.database.findUnique({ where: { id }, include: { properties: { where: { deletedAt: null }, orderBy: { position: "asc" } }, views: { orderBy: { position: "asc" } }, templates: { orderBy: { name: "asc" } }, automations: { orderBy: { createdAt: "desc" } } } }));
+}
+
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id } = await params; const access = await databaseAccess(session.user.id, id);
