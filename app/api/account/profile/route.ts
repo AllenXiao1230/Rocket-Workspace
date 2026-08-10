@@ -16,5 +16,6 @@ export async function PATCH(request: Request) {
   const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const parsed = profileSchema.safeParse(await request.json()); if (!parsed.success) return NextResponse.json({ error: "個人資料格式不正確" }, { status: 400 });
   const user = await prisma.user.update({ where: { id: session.user.id }, data: parsed.data, select: { id: true, name: true, email: true, avatarEmoji: true, avatarKey: true } });
+  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "account.profile_updated", entity: "user", entityId: user.id, metadata: { changedFields: Object.keys(parsed.data) } } });
   return NextResponse.json({ ...user, avatarUrl: user.avatarKey ? "/api/account/avatar" : null });
 }

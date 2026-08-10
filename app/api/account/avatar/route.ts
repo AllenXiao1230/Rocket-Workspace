@@ -35,6 +35,7 @@ export async function POST(request: Request) {
   try {
     await objectStorage.send(new PutObjectCommand({ Bucket: attachmentBucket, Key: key, Body: Buffer.from(await file.arrayBuffer()), ContentType: file.type }));
     await prisma.user.update({ where: { id: userId }, data: { avatarKey: key } });
+    await prisma.auditEvent.create({ data: { userId, action: "account.avatar_updated", entity: "user", entityId: userId, metadata: { mimeType: file.type, size: file.size } } });
     if (previous?.avatarKey) void objectStorage.send(new DeleteObjectCommand({ Bucket: attachmentBucket, Key: previous.avatarKey })).catch(() => undefined);
     return NextResponse.json({ avatarUrl: `/api/account/avatar?v=${encodeURIComponent(key.slice(-12))}` }, { status: 201 });
   } catch { try { await objectStorage.send(new DeleteObjectCommand({ Bucket: attachmentBucket, Key: key })); } catch { /* cleanup is best effort */ } return NextResponse.json({ error: "頭像上傳失敗" }, { status: 502 }); }
@@ -44,6 +45,7 @@ export async function DELETE() {
   const userId = await currentUser(); if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const previous = await prisma.user.findUnique({ where: { id: userId }, select: { avatarKey: true } });
   await prisma.user.update({ where: { id: userId }, data: { avatarKey: null } });
+  await prisma.auditEvent.create({ data: { userId, action: "account.avatar_removed", entity: "user", entityId: userId } });
   if (previous?.avatarKey) void objectStorage.send(new DeleteObjectCommand({ Bucket: attachmentBucket, Key: previous.avatarKey })).catch(() => undefined);
   return NextResponse.json({ ok: true });
 }
