@@ -6,6 +6,14 @@ import { validateRowValues } from "@/lib/database-validation";
 type InputRow = Record<string, unknown>;
 type ImportError = { row: number | null; message: string };
 
+export async function retryDatabaseImportJob(jobId: string, databaseId: string, userId: string) {
+  const result = await prisma.databaseImportJob.updateMany({
+    where: { id: jobId, databaseId, userId, status: "FAILED" },
+    data: { status: "PENDING", processedRows: 0, createdRows: 0, errorRows: Prisma.DbNull },
+  });
+  return result.count === 1;
+}
+
 export async function processDatabaseImportJobs(limit = 1) {
   let completed = 0; let failed = 0;
   for (let count = 0; count < limit; count += 1) {

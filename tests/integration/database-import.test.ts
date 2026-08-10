@@ -1,11 +1,12 @@
 import { DatabasePropertyType, PrismaClient, WorkspaceRole } from "@prisma/client";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { processDatabaseImportJobs } from "@/lib/database-import";
+import { processDatabaseImportJobs, retryDatabaseImportJob } from "@/lib/database-import";
 
 const prisma = new PrismaClient();
 let workspaceId = "";
 let databaseId = "";
 let propertyId = "";
+let numberPropertyId = "";
 let userId = "";
 
 beforeAll(async () => {
@@ -15,11 +16,15 @@ beforeAll(async () => {
   await prisma.membership.create({ data: { userId: user.id, workspaceId: workspace.id, role: WorkspaceRole.OWNER } });
   const project = await prisma.project.create({ data: { workspaceId: workspace.id, code: `IT-${suffix.slice(0, 6)}`, name: "Integration Test" } });
   const database = await prisma.database.create({ data: { projectId: project.id, name: "Import Test" } });
-  const property = await prisma.databaseProperty.create({ data: { databaseId: database.id, name: "Title", type: DatabasePropertyType.TEXT } });
+  const [property, numberProperty] = await Promise.all([
+    prisma.databaseProperty.create({ data: { databaseId: database.id, name: "Title", type: DatabasePropertyType.TEXT } }),
+    prisma.databaseProperty.create({ data: { databaseId: database.id, name: "Amount", type: DatabasePropertyType.NUMBER } }),
+  ]);
   await prisma.databaseImportJob.create({ data: { databaseId: database.id, userId: user.id, totalRows: 2, inputRows: [{ [property.id]: "first" }, { [property.id]: "second" }] } });
   workspaceId = workspace.id;
   databaseId = database.id;
   propertyId = property.id;
+  numberPropertyId = numberProperty.id;
   userId = user.id;
 });
 
@@ -60,5 +65,25 @@ describe("database import worker", () => {
     expect(job).toMatchObject({ status: "FAILED", processedRows: 2, createdRows: 0 });
     expect(job.errorRows).toEqual([{ row: 3, message: "欄位不存在或已刪除" }]);
     expect(rows).toHaveLength(2);
+  });
+
+  it("retries a failed job after the import input is corrected", async () => {
+    const retryJob = await prisma.databaseImportJob.create({
+      data: { databaseId, userId, totalRows: 1, inputRows: [{ [numberPropertyId]: "not a number" }] },
+    });
+
+    await expect(processDatabaseImportJobs()).resolves.toMatchObject({ completed: 0, failed: 1 });
+    await expect(prisma.databaseImportJob.findUniqueOrThrow({ where: { id: retryJob.id } })).resolves.toMatchObject({ status: "FAILED" });
+
+    await prisma.databaseProperty.update({ where: { id: numberPropertyId }, data: { type: DatabasePropertyType.TEXT } });
+    await expect(retryDatabaseImportJob(retryJob.id, databaseId, userId)).resolves.toBe(true);
+    await expect(processDatabaseImportJobs()).resolves.toMatchObject({ completed: 1, failed: 0 });
+
+    const [job, rows] = await Promise.all([
+      prisma.databaseImportJob.findUniqueOrThrow({ where: { id: retryJob.id } }),
+      prisma.databaseRow.findMany({ where: { databaseId, importJobId: retryJob.id } }),
+    ]);
+    expect(job).toMatchObject({ status: "COMPLETED", processedRows: 1, createdRows: 1 });
+    expect(rows).toHaveLength(1);
   });
 });
