@@ -184,6 +184,10 @@ pnpm install
 pnpm db:generate
 pnpm db:deploy
 pnpm db:seed
+
+# Creates/migrates the isolated Compose integration database; it never resets
+# or writes to the configured application database.
+pnpm test:integration:prepare
 pnpm dev
 # 另一個終端機
 pnpm collab
