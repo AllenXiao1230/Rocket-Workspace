@@ -78,6 +78,14 @@ enum AutomationAction {
   NOTIFY
 }
 
+enum DatabaseImportStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  ROLLED_BACK
+}
+
 enum DocumentReviewState {
   DRAFT
   IN_REVIEW
@@ -133,6 +141,7 @@ model User {
   workLogs     TaskWorkLog[]
   testApprovals TestApproval[]
   notifications Notification[]
+  databaseImportJobs DatabaseImportJob[]
 }
 
 model Workspace {
@@ -217,10 +226,29 @@ model Database {
   rows       DatabaseRow[]
   templates  DatabaseTemplate[]
   automations DatabaseAutomation[]
+  importJobs DatabaseImportJob[]
   createdAt  DateTime           @default(now())
   updatedAt  DateTime           @updatedAt
   @@index([projectId, createdAt])
   @@index([parentDocumentId])
+}
+
+model DatabaseImportJob {
+  id        String               @id @default(cuid())
+  status    DatabaseImportStatus @default(PENDING)
+  inputRows Json
+  errorRows Json?
+  totalRows Int
+  processedRows Int              @default(0)
+  createdRows Int                @default(0)
+  databaseId String
+  userId    String
+  database  Database             @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+  user      User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt DateTime             @default(now())
+  updatedAt DateTime             @updatedAt
+  @@index([databaseId, status, createdAt])
+  @@index([userId, createdAt])
 }
 
 model DatabaseProperty {
@@ -286,6 +314,7 @@ model DatabaseRow {
   position   Int      @default(0)
   deletedAt  DateTime?
   deletionBatchId String?
+  importJobId     String?
   databaseId String
   database   Database @relation(fields: [databaseId], references: [id], onDelete: Cascade)
   createdAt  DateTime @default(now())
@@ -293,6 +322,7 @@ model DatabaseRow {
   @@index([databaseId, position])
   @@index([databaseId, deletedAt])
   @@index([deletionBatchId])
+  @@index([importJobId])
 }
 
 model Document {

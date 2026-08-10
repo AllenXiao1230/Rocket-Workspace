@@ -1,51 +1,44 @@
 import { NextResponse } from "next/server";
-import { AutomationTrigger, Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canWrite, databaseAccess } from "@/lib/permissions";
-import { applyAutomations } from "@/lib/database-automations";
-import { validateRowValues } from "@/lib/database-validation";
 
 const schema = z.object({ rows: z.array(z.record(z.string(), z.unknown())).min(1).max(2_000) });
 
-/** CSV import boundary: validate the complete batch before one atomic write. */
+async function accessFor(userId: string, databaseId: string) { return databaseAccess(userId, databaseId); }
+const csvCell = (value: unknown) => `"${String(value ?? "").replace(/^([=+\-@])/, "'$1").replaceAll('"', '""')}"`;
+
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth();
-  if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const { id } = await params;
-  const access = await databaseAccess(session.user.id, id);
-  if (!access || !canWrite(access.membership.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { id } = await params; const access = await accessFor(session.user.id, id); if (!access || !canWrite(access.membership.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const input = schema.safeParse(await request.json().catch(() => null)); if (!input.success) return NextResponse.json({ error: "匯入資料必須為 1 至 2,000 列" }, { status: 400 });
+  const job = await prisma.databaseImportJob.create({ data: { databaseId: id, userId: session.user.id, totalRows: input.data.rows.length, inputRows: input.data.rows as Prisma.InputJsonValue } });
+  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "database_import.queued", entity: "database_import", entityId: job.id, workspaceId: access.database.project.workspaceId, projectId: access.database.projectId, metadata: { databaseId: id, totalRows: job.totalRows } } });
+  return NextResponse.json({ id: job.id, status: job.status, totalRows: job.totalRows }, { status: 202 });
+}
 
-  const input = schema.safeParse(await request.json().catch(() => null));
-  if (!input.success) return NextResponse.json({ error: "匯入資料必須為 1 至 2,000 列" }, { status: 400 });
-  const [properties, automations] = await Promise.all([
-    prisma.databaseProperty.findMany({ where: { databaseId: id, deletedAt: null }, select: { id: true, name: true, type: true, options: true } }),
-    prisma.databaseAutomation.findMany({ where: { databaseId: id, trigger: AutomationTrigger.ROW_CREATED, enabled: true }, select: { name: true, action: true, config: true } }),
-  ]);
-
-  const rows: Prisma.InputJsonValue[] = [];
-  const notifications: Array<{ title: string; body: string }> = [];
-  for (const [index, rawValues] of input.data.rows.entries()) {
-    const initial = validateRowValues(properties, rawValues);
-    if (initial.issues.length) return NextResponse.json({ error: `第 ${index + 2} 列：${initial.issues[0].message}`, issues: initial.issues }, { status: 400 });
-    const automated = applyAutomations(automations, initial.values);
-    const final = validateRowValues(properties, automated.values);
-    const generated = automated.createdRows.map((values) => validateRowValues(properties, values));
-    const issues = [...final.issues, ...generated.flatMap((result) => result.issues)];
-    if (issues.length) return NextResponse.json({ error: `第 ${index + 2} 列：${issues[0].message}`, issues }, { status: 400 });
-    rows.push(final.values as Prisma.InputJsonValue, ...generated.map((result) => result.values as Prisma.InputJsonValue));
-    notifications.push(...automated.notifications);
+export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); const { id } = await params; const access = await accessFor(session.user.id, id); if (!access) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const jobId = new URL(request.url).searchParams.get("jobId"); if (!jobId) return NextResponse.json({ error: "jobId required" }, { status: 400 });
+  const job = await prisma.databaseImportJob.findFirst({ where: { id: jobId, databaseId: id, userId: session.user.id }, select: { id: true, status: true, totalRows: true, processedRows: true, createdRows: true, errorRows: true, createdAt: true, updatedAt: true } });
+  if (!job) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  if (new URL(request.url).searchParams.get("download") === "errors") {
+    const errors = Array.isArray(job.errorRows) ? job.errorRows : [];
+    const csv = ["row,message", ...errors.map((error) => {
+      const item = error && typeof error === "object" ? error as { row?: unknown; message?: unknown } : {};
+      return `${csvCell(item.row ?? "")},${csvCell(item.message ?? "匯入失敗")}`;
+    })].join("\r\n");
+    return new NextResponse(`\ufeff${csv}`, { headers: { "Content-Type": "text/csv; charset=utf-8", "Content-Disposition": `attachment; filename="database-import-${job.id}-errors.csv"` } });
   }
-  if (rows.length > 5_000) return NextResponse.json({ error: "自動化產生的列數過多，請縮小匯入批次" }, { status: 400 });
+  return NextResponse.json(job);
+}
 
-  const created = await prisma.$transaction(async (tx) => {
-    const max = await tx.databaseRow.aggregate({ where: { databaseId: id, deletedAt: null }, _max: { position: true } });
-    const position = (max._max.position ?? -1) + 1;
-    await tx.databaseRow.createMany({ data: rows.map((values, index) => ({ databaseId: id, values, position: position + index })) });
-    if (notifications.length) await tx.notification.createMany({ data: notifications.map((notification) => ({ userId: session.user.id, ...notification })) });
-    return tx.databaseRow.findMany({ where: { databaseId: id, position: { gte: position, lt: position + rows.length } }, orderBy: { position: "asc" } });
-  });
-  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "database_row.imported", entity: "database", entityId: id, workspaceId: access.database.project.workspaceId, projectId: access.database.projectId, metadata: { requestedRows: input.data.rows.length, createdRows: created.length } } });
-  return NextResponse.json({ rows: created, imported: input.data.rows.length, created: created.length }, { status: 201 });
+export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); const { id } = await params; const access = await accessFor(session.user.id, id); if (!access || !canWrite(access.membership.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const jobId = String((await request.json().catch(() => ({}))).jobId || ""); const job = await prisma.databaseImportJob.findFirst({ where: { id: jobId, databaseId: id, userId: session.user.id, status: "COMPLETED" } }); if (!job) return NextResponse.json({ error: "找不到可回復的匯入" }, { status: 404 });
+  const deletionBatchId = crypto.randomUUID();
+  const result = await prisma.$transaction([prisma.databaseRow.updateMany({ where: { databaseId: id, importJobId: job.id, deletedAt: null }, data: { deletedAt: new Date(), deletionBatchId } }), prisma.databaseImportJob.update({ where: { id: job.id }, data: { status: "ROLLED_BACK" } }), prisma.auditEvent.create({ data: { userId: session.user.id, action: "database_import.rolled_back", entity: "database_import", entityId: job.id, workspaceId: access.database.project.workspaceId, projectId: access.database.projectId, metadata: { databaseId: id, rolledBackRows: job.createdRows } } })]);
+  return NextResponse.json({ ok: true, rolledBackRows: result[0].count });
 }
