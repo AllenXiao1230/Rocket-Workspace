@@ -33,5 +33,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (parent && parent.authorId !== session.user.id) {
     await prisma.notification.create({ data: { userId: parent.authorId, title: "文件留言有新回覆", body: parsed.data.body.slice(0, 140), href: `/?document=${id}` } });
   }
+  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "document_comment.created", entity: "document_comment", entityId: comment.id, workspaceId: access.document.project.workspaceId, projectId: access.document.projectId, metadata: { documentId: id, parentId: comment.parentId } } });
   return NextResponse.json({ ...comment, isAuthor: true, canManage: true }, { status: 201 });
 }
