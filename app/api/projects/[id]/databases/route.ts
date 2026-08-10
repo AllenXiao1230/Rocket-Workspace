@@ -24,5 +24,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     ] }, views: { create: { name: "All records", position: 0 } } },
     include: databaseInclude,
   });
+  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "database.created", entity: "database", entityId: database.id, workspaceId: access.project.workspaceId, projectId: id, metadata: { name: database.name, parentDocumentId } } });
   return NextResponse.json(database, { status: 201 });
 }
