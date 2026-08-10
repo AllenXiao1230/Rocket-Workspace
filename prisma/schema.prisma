@@ -85,6 +85,11 @@ enum DocumentReviewState {
   CHANGES_REQUESTED
 }
 
+enum DocumentSyncAction {
+  WRITE
+  DELETE
+}
+
 enum ApprovalStatus {
   DRAFT
   PENDING
@@ -320,11 +325,27 @@ model Document {
   attachments Attachment[]
   comments    DocumentComment[]
   revisions   DocumentRevision[]
+  syncJob     DocumentSyncJob?
   @@index([projectId, parentId, position])
   @@index([projectId, deletedAt])
   @@index([deletionBatchId])
   @@index([projectId, reviewState])
   @@index([lockedById])
+}
+
+// Durable outbox for the filesystem mirror. The database transaction commits
+// first; a worker retries the side effect until it has completed.
+model DocumentSyncJob {
+  id        String             @id @default(cuid())
+  documentId String            @unique
+  action    DocumentSyncAction @default(WRITE)
+  markdown  String?
+  attempts  Int                @default(0)
+  lastError String?
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  document  Document           @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  @@index([createdAt])
 }
 
 model DocumentTemplate {
@@ -408,6 +429,7 @@ model Task {
   recurrenceRule String?
   recurrenceAnchor DateTime?
   recurrenceSourceId String?
+  recurrenceProcessedAt DateTime?
   slaDueAt     DateTime?
   workLogs     TaskWorkLog[]
   createdAt   DateTime   @default(now())
@@ -418,6 +440,7 @@ model Task {
   @@index([projectId, parentId])
   @@index([projectId, slaDueAt])
   @@index([recurrenceSourceId])
+  @@index([projectId, status, recurrenceProcessedAt])
   @@unique([recurrenceSourceId, recurrenceAnchor])
 }
 

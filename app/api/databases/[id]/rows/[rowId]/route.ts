@@ -24,6 +24,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
     for (const notification of automated.notifications) await tx.notification.create({ data: { userId: session.user.id, ...notification } });
     return { updated, createdRows };
   });
+  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "database_row.updated", entity: "database_row", entityId: rowId, workspaceId: access.database.project.workspaceId, projectId: access.database.projectId, metadata: { databaseId: id, automationCreatedRows: createdRows.length } } });
   return NextResponse.json({ ...updated, createdRows });
 }
 export async function DELETE(_: Request, { params }: { params: Promise<{ id: string; rowId: string }> }) {

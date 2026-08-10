@@ -5,7 +5,13 @@ import type { TeamMember } from "@/components/team-management";
 import { RecordAttachments } from "@/components/record-attachments";
 
 export type ProjectModule = "tasks" | "issues" | "bom" | "tests";
-export type ModuleRecord = { id: string; [key: string]: any };
+export type ModuleRecord = {
+  id: string;
+  updatedAt?: string | Date;
+  assignee?: { name: string } | null;
+  dependencies?: Array<{ dependsOn: { id: string; title: string; status: string } }>;
+  [key: string]: unknown;
+};
 type TrashedRecord = { id: string; title: string; deletedAt: string; deletionBatchId: string | null };
 const moduleText = { tasks: { title: "任務", hint: "安排工作、負責人、優先級與期限" }, issues: { title: "議題", hint: "追蹤風險、異常與處理狀態" }, bom: { title: "物料清單", hint: "管理料號、數量、供應商與採購狀態" }, tests: { title: "測試紀錄", hint: "記錄測試結果、日期、操作人與備註" } };
 const displayMember = (member: TeamMember) => member.nickname || member.user.name;

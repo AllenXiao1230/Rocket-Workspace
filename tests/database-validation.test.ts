@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { validatePropertyOptions, validateRowValues } from "@/lib/database-validation";
 import { validateAutomationConfig } from "@/lib/database-automations";
+import { validatePropertyReference } from "@/lib/database-reference-validation";
 
 const properties = [
   { id: "name", name: "名稱", type: "TEXT" as const, options: null },
@@ -24,5 +25,13 @@ describe("database row server validation", () => {
     expect(validateAutomationConfig("SET_PROPERTY", { propertyId: "formula", value: 9 }, properties)).not.toHaveLength(0);
     expect(validateAutomationConfig("CREATE_ROW", { values: { count: "invalid" } }, properties)).not.toHaveLength(0);
     expect(validateAutomationConfig("SET_PROPERTY", { propertyId: "count", value: 3 }, properties)).toHaveLength(0);
+  });
+
+  it("requires relation and rollup targets to exist in the same workspace", () => {
+    const sourceProperties = [{ id: "relation", name: "零件", type: "RELATION" as const, options: { databaseId: "parts" } }];
+    const targetDatabase = { id: "parts", workspaceId: "workspace-a", properties: [{ id: "cost", name: "成本", type: "NUMBER" as const, options: null }] };
+    expect(validatePropertyReference("RELATION", { databaseId: "other" }, { workspaceId: "workspace-a", sourceProperties, targetDatabase })).not.toHaveLength(0);
+    expect(validatePropertyReference("ROLLUP", { databaseId: "parts", relationPropertyId: "relation", targetPropertyId: "cost", operation: "SUM" }, { workspaceId: "workspace-a", sourceProperties, targetDatabase })).toHaveLength(0);
+    expect(validatePropertyReference("ROLLUP", { databaseId: "parts", relationPropertyId: "relation", targetPropertyId: "missing", operation: "COUNT" }, { workspaceId: "workspace-a", sourceProperties, targetDatabase })).not.toHaveLength(0);
   });
 });

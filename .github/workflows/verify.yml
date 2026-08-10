@@ -23,5 +23,5 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm prisma generate
       - run: pnpm lint
-      - run: pnpm test
+      - run: pnpm test:coverage
       - run: pnpm build

@@ -6,6 +6,11 @@ export default defineConfig({
   test: {
     environment: "node",
     include: ["tests/**/*.test.ts"],
-    coverage: { provider: "v8", reporter: ["text", "html"], include: ["lib/**/*.ts"] },
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "html"],
+      include: ["lib/**/*.ts"],
+      thresholds: { branches: 35, functions: 50, lines: 50, statements: 50 },
+    },
   },
 });

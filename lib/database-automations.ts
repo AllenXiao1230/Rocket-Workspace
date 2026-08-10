@@ -1,4 +1,4 @@
-import { AutomationAction, AutomationTrigger, Prisma } from "@prisma/client";
+import { AutomationAction, AutomationTrigger, Prisma, type DatabaseAutomation } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { type ValidationIssue, type ValidationProperty, validateRowValues } from "@/lib/database-validation";
 
@@ -21,8 +21,7 @@ export function validateAutomationConfig(action: AutomationAction, input: unknow
   return [];
 }
 
-export async function applyRowAutomations(databaseId: string, trigger: AutomationTrigger, input: Values) {
-  const automations = await prisma.databaseAutomation.findMany({ where: { databaseId, trigger, enabled: true } });
+export function applyAutomations(automations: Pick<DatabaseAutomation, "name" | "action" | "config">[], input: Values) {
   const values = { ...input };
   const createdRows: Values[] = [];
   const notifications: Array<{ title: string; body: string }> = [];
@@ -35,4 +34,9 @@ export async function applyRowAutomations(databaseId: string, trigger: Automatio
     if (automation.action === AutomationAction.CREATE_ROW && config.values && Object.keys(config.values).length && createdRows.length < 10) createdRows.push({ ...config.values });
   }
   return { values: values as Prisma.InputJsonValue, createdRows: createdRows.map((row) => row as Prisma.InputJsonValue), notifications };
+}
+
+export async function applyRowAutomations(databaseId: string, trigger: AutomationTrigger, input: Values) {
+  const automations = await prisma.databaseAutomation.findMany({ where: { databaseId, trigger, enabled: true } });
+  return applyAutomations(automations, input);
 }

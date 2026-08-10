@@ -23,5 +23,6 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     for (const notification of automated.notifications) await tx.notification.create({ data: { userId: session.user.id, ...notification } });
     return { row, createdRows };
   });
+  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "database_row.created", entity: "database_row", entityId: row.id, workspaceId: access.database.project.workspaceId, projectId: access.database.projectId, metadata: { databaseId: id, automationCreatedRows: createdRows.length } } });
   return NextResponse.json({ ...row, createdRows }, { status: 201 });
 }
