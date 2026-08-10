@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { validateRowValues } from "@/lib/database-validation";
+import { validatePropertyOptions, validateRowValues } from "@/lib/database-validation";
+import { validateAutomationConfig } from "@/lib/database-automations";
 
 const properties = [
   { id: "name", name: "名稱", type: "TEXT" as const, options: null },
@@ -16,5 +17,12 @@ describe("database row server validation", () => {
 
   it("rejects invalid typed values", () => {
     expect(validateRowValues(properties, { count: "2", status: "錯誤" }).issues).toHaveLength(2);
+  });
+
+  it("validates property changes and automation output", () => {
+    expect(validatePropertyOptions("NUMBER", { format: "invalid" })).not.toHaveLength(0);
+    expect(validateAutomationConfig("SET_PROPERTY", { propertyId: "formula", value: 9 }, properties)).not.toHaveLength(0);
+    expect(validateAutomationConfig("CREATE_ROW", { values: { count: "invalid" } }, properties)).not.toHaveLength(0);
+    expect(validateAutomationConfig("SET_PROPERTY", { propertyId: "count", value: 3 }, properties)).toHaveLength(0);
   });
 });

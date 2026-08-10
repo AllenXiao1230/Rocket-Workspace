@@ -47,7 +47,7 @@ services:
     env_file: .env
     command: pnpm scheduler
     depends_on:
-      postgres: { condition: service_healthy }
+      app: { condition: service_healthy }
     restart: unless-stopped
 
   postgres:
@@ -76,7 +76,9 @@ services:
       MINIO_ROOT_USER: ${MINIO_ACCESS_KEY:-minioadmin}
       MINIO_ROOT_PASSWORD: ${MINIO_SECRET_KEY:-change-me-minio}
     volumes: [minio-data:/data]
-    ports: ["127.0.0.1:9000:9000", "127.0.0.1:9001:9001"]
+    # S3 is used only by Compose services. Keep its API off the host so it
+    # cannot collide with another service or be reached outside this network.
+    ports: ["127.0.0.1:9001:9001"]
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]

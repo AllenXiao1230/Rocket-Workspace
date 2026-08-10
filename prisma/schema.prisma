@@ -375,6 +375,7 @@ model Notification {
   title     String
   body      String?
   href      String?
+  deduplicationKey String? @unique
   readAt    DateTime?
   userId    String
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -406,6 +407,7 @@ model Task {
   milestone    Boolean    @default(false)
   recurrenceRule String?
   recurrenceAnchor DateTime?
+  recurrenceSourceId String?
   slaDueAt     DateTime?
   workLogs     TaskWorkLog[]
   createdAt   DateTime   @default(now())
@@ -415,6 +417,8 @@ model Task {
   @@index([deletionBatchId])
   @@index([projectId, parentId])
   @@index([projectId, slaDueAt])
+  @@index([recurrenceSourceId])
+  @@unique([recurrenceSourceId, recurrenceAnchor])
 }
 
 model TaskWorkLog {
