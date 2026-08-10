@@ -6,7 +6,7 @@ export type { MyTask } from "@/lib/my-work";
 
 const priorityLabel: Record<number, string> = { 1: "最高", 2: "高", 3: "中", 4: "低", 5: "最低" };
 
-export function MyWorkPanel({ tasks, editable, currentProjectId, onOpenTask, onTaskUpdated }: { tasks: MyTask[]; editable: boolean; currentProjectId: string; onOpenTask: (task: MyTask) => void; onTaskUpdated: (task: MyTask) => void }) {
+export function MyWorkPanel({ tasks, editable, currentProjectId, onOpenTask, onTaskUpdated, hasMore = false, loadingMore = false, onLoadMore }: { tasks: MyTask[]; editable: boolean; currentProjectId: string; onOpenTask: (task: MyTask) => void; onTaskUpdated: (task: MyTask) => void; hasMore?: boolean; loadingMore?: boolean; onLoadMore?: () => void }) {
   const groups = useMemo(() => groupMyTasks(tasks), [tasks]);
   const [notice, setNotice] = useState("");
   const [savingId, setSavingId] = useState<string | null>(null);
@@ -45,6 +45,7 @@ export function MyWorkPanel({ tasks, editable, currentProjectId, onOpenTask, onT
     {section("待辦事項", groups.pending, "沒有待處理事項。")}
     {section("進行中", groups.inProgress, "目前沒有進行中的任務。")}
     {groups.blocked.length > 0 && section("受阻任務", groups.blocked, "")}
+    {hasMore && <button className="button-secondary" type="button" disabled={loadingMore} onClick={onLoadMore}>{loadingMore ? "載入中…" : "載入更多任務"}</button>}
     {notice && <p className="my-work-notice" role="status">{notice}</p>}
   </section>;
 }
