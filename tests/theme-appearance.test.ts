@@ -8,7 +8,7 @@ const read = (file: string) => fs.readFileSync(path.join(root, file), "utf8");
 describe("可自訂外觀的主題權杖", () => {
   it("讓所有回收桶入口使用共用次要按鈕樣式", () => {
     const secondaryButtons = [
-      ["components/project-module-board.tsx", "♻ 回收桶", "button-secondary"],
+      ["components/project-module-board.tsx", "♻ 回收桶", "module-trash-toggle"],
       ["components/document-recycle-bin.tsx", "重新整理", "button-secondary"],
       ["components/document-attachments.tsx", "附件回收桶", "button-secondary"],
       ["components/database-view.tsx", "♻ 欄位回收桶", "button-secondary"],

@@ -8,8 +8,13 @@ const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp", "image/gi
 
 async function currentUser() { const session = await auth(); return session?.user?.id || null; }
 
-export async function GET() {
-  const userId = await currentUser(); if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+export async function GET(request: Request) {
+  const requesterId = await currentUser(); if (!requesterId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const userId = new URL(request.url).searchParams.get("userId") || requesterId;
+  if (userId !== requesterId) {
+    const sharedWorkspace = await prisma.membership.findFirst({ where: { userId: requesterId, workspace: { memberships: { some: { userId } } } }, select: { id: true } });
+    if (!sharedWorkspace) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
   const user = await prisma.user.findUnique({ where: { id: userId }, select: { avatarKey: true } });
   if (!user?.avatarKey) return NextResponse.json({ error: "Not found" }, { status: 404 });
   try {
