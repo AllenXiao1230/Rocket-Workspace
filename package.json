@@ -1,6 +1,6 @@
 {
   "name": "rocket-workspace",
-  "version": "0.1.11",
+  "version": "0.1.12",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "packageManager": "pnpm@10.8.1",
@@ -16,6 +16,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
+    "test:e2e": "playwright test",
     "db:generate": "prisma generate",
     "db:push": "prisma db push",
     "db:deploy": "prisma migrate deploy",
@@ -63,6 +64,7 @@
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3.3.1",
+    "@playwright/test": "^1.56.1",
     "@types/node": "^22.15.30",
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.5",
