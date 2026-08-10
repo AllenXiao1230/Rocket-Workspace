@@ -31,8 +31,12 @@ if [ -z "$APP_VERSION" ]; then
   exit 1
 fi
 
-# Rebuild application services only. PostgreSQL, Redis and MinIO volumes remain intact.
-docker compose up -d --build app collab scheduler backup
+# Build each application image before switching containers. Building the three
+# Next.js images together can exhaust memory on small production hosts.
+for service in app collab scheduler backup; do
+  docker compose build "$service"
+done
+docker compose up -d app collab scheduler backup
 
 for _attempt in $(seq 1 20); do
   if curl --fail --silent --show-error http://127.0.0.1:3000/api/health; then
