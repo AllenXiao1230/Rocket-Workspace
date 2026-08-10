@@ -24,7 +24,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const nextSourceProperties = sourceProperties.map((item) => item.id === propertyId ? { ...item, type, options } : item);
   const referenceIssues = validatePropertyReference(type, options, { workspaceId: access.database.project.workspaceId, sourceProperties: nextSourceProperties, targetDatabase: target ? { id: target.id, workspaceId: target.project.workspaceId, properties: target.properties } : null });
   if (referenceIssues.length) return NextResponse.json({ error: referenceIssues[0].message }, { status: 400 });
-  return NextResponse.json(await prisma.databaseProperty.update({ where: { id: propertyId }, data: { ...parsed.data, options: parsed.data.options === undefined ? undefined : parsed.data.options === null ? Prisma.JsonNull : parsed.data.options as Prisma.InputJsonValue } }));
+  const updated = await prisma.databaseProperty.update({ where: { id: propertyId }, data: { ...parsed.data, options: parsed.data.options === undefined ? undefined : parsed.data.options === null ? Prisma.JsonNull : parsed.data.options as Prisma.InputJsonValue } });
+  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "database_property.updated", entity: "database_property", entityId: propertyId, workspaceId: access.database.project.workspaceId, projectId: access.database.projectId, metadata: { databaseId: id, changedFields: Object.keys(parsed.data) } } });
+  return NextResponse.json(updated);
 }
 export async function DELETE(_: Request, { params }: { params: Promise<{ id: string; propertyId: string }> }) {
   const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
