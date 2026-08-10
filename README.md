@@ -141,6 +141,18 @@ docker compose exec backup restore-drill <backup-id>
 
 部署腳本會把已部署提交的 SHA 與 `package.json` 版本傳入 Docker image。登入後，右側帳號區會定期比對此 SHA 與 GitHub 儲存庫預設分支；若伺服器落後，會顯示「可更新」並彈出更新提醒。手動部署時也應帶入相同資訊：`APP_COMMIT=$(git rev-parse HEAD) APP_VERSION=$(node -p 'require("./package.json").version') docker compose up -d --build app`。如需使用 fork，請以 `UPDATE_REPOSITORY=owner/repository` 覆寫預設儲存庫。若該儲存庫是私有的，請在伺服器 `.env` 加入只讀 fine-grained Token：`UPDATE_GITHUB_TOKEN=...`；此 Token 只會用於 GitHub 版本比較，絕不會送到瀏覽器或設定頁面。
 
+## Git 推送前版本號
+
+版本號以 `package.json` 的 `MAJOR.MINOR.PATCH` 為唯一來源。安裝本儲存庫的 hooks 後，每個有實際內容的 commit 都會自動遞增 patch 版本並將 `package.json` 加入該 commit；push 前也會驗證所有要推送的新提交都含有版本變更。因此每一次有新提交的 push 都會帶有新的版本號，空 push 不會產生無意義版本。
+
+每個 clone（包含伺服器上的 `/srv/rocket-workspace`）只需執行一次：
+
+```bash
+git config core.hooksPath .githooks
+```
+
+手動遞增版本可執行 `pnpm version:bump`。此腳本只依賴 Bash、Sed 與 Perl，不需要在部署主機另外安裝 Node.js。
+
 ## 三節點協作壓測
 
 正式部署或變更協作服務前，可在同一個 Docker 網路啟動三個獨立 Yjs 節點，讓 36 個客戶端平均分布連線並驗證每一筆更新都會跨 Redis 傳遞到所有其他客戶端。測試預設要求 p95 傳播延遲不超過 3 秒；輸出為單行 JSON，`"result":"PASS"` 才算通過。

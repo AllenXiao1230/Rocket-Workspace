@@ -32,6 +32,12 @@ export function getStoredAppearance(): Appearance {
 export function applyAppearance(appearance: Appearance) {
   if (typeof window === "undefined") return;
   const root = document.documentElement;
+  // Keep colour meaning separate from the legacy aliases.  New components use
+  // the semantic tokens; aliases keep every pre-existing component in sync.
+  root.style.setProperty("--theme-primary", appearance.primary);
+  root.style.setProperty("--theme-primary-deep", appearance.deep);
+  root.style.setProperty("--theme-highlight", appearance.highlight);
+  root.style.setProperty("--theme-warning", appearance.warning);
   root.style.setProperty("--green", appearance.primary);
   root.style.setProperty("--green-deep", appearance.deep);
   root.style.setProperty("--acid", appearance.highlight);

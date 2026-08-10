@@ -21,6 +21,8 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "documents:sync": "tsx scripts/sync-markdown.ts",
+    "version:bump": "bash scripts/bump-version.sh",
+    "hooks:install": "git config core.hooksPath .githooks",
     "collab": "node apps/collab-server/index.mjs",
     "scheduler": "tsx scripts/task-scheduler.ts",
     "loadtest:collab": "node scripts/collab-loadtest.mjs"

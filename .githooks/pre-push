@@ -1,0 +1,30 @@
+#!/usr/bin/env bash
+
+set -Eeuo pipefail
+
+zero_oid="0000000000000000000000000000000000000000"
+empty_tree="$(git hash-object -t tree /dev/null)"
+
+# A pre-push hook cannot safely amend the commit being pushed: Git has already
+# captured the ref it intends to send.  This guard therefore rejects any branch
+# push whose outgoing commits omit package.json.  The pre-commit hook normally
+# makes this invisible by staging the bumped version for every real commit.
+while read -r local_ref local_oid remote_ref remote_oid; do
+  [ -n "${local_ref:-}" ] || continue
+  case "$local_ref" in
+    refs/heads/*) ;;
+    *) continue ;;
+  esac
+  [ "$local_oid" != "$zero_oid" ] || continue
+
+  base_oid="$remote_oid"
+  [ "$base_oid" != "$zero_oid" ] || base_oid="$empty_tree"
+  if git diff --quiet "$base_oid" "$local_oid" -- package.json; then
+    cat >&2 <<'MESSAGE'
+Push blocked: outgoing commits do not update package.json version.
+Create a normal commit with this repository's pre-commit hook enabled, then push again.
+To enable the hooks in a new clone: git config core.hooksPath .githooks
+MESSAGE
+    exit 1
+  fi
+done

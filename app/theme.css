@@ -1,0 +1,61 @@
+/*
+ * Appearance cascade
+ *
+ * Component CSS may describe layout locally, but colour always resolves through
+ * this final layer.  This keeps older modules and new modules visually aligned
+ * when a user changes the workspace accent in Settings.
+ */
+:root {
+  --panel: var(--paper);
+  --theme-input: var(--paper);
+  --theme-input-hover: var(--surface-soft);
+  --theme-sidebar: color-mix(in srgb, var(--theme-primary-deep) 18%, var(--void));
+  --theme-sidebar-raised: color-mix(in srgb, var(--theme-primary-deep) 30%, var(--void));
+  --theme-on-sidebar: color-mix(in srgb, var(--theme-highlight) 44%, #ffffff);
+  --theme-sidebar-muted: color-mix(in srgb, var(--theme-primary) 28%, #abb3af);
+  --theme-danger: #d9574f;
+  --theme-danger-soft: color-mix(in srgb, var(--theme-danger) 12%, var(--paper));
+  --theme-danger-border: color-mix(in srgb, var(--theme-danger) 42%, var(--line));
+}
+
+html[data-theme="dark"] {
+  --surface: color-mix(in srgb, var(--theme-primary-deep) 15%, #171a1b);
+  --paper: color-mix(in srgb, var(--theme-primary-deep) 20%, #111415);
+  --line: color-mix(in srgb, var(--theme-primary) 28%, #303638);
+  --ink: color-mix(in srgb, var(--theme-highlight) 28%, #edf1ed);
+  --muted: color-mix(in srgb, var(--theme-primary) 31%, #aab5b0);
+  --theme-input: color-mix(in srgb, var(--theme-primary-deep) 24%, #0f1213);
+  --theme-input-hover: color-mix(in srgb, var(--theme-primary) 13%, var(--theme-input));
+  --theme-sidebar: #101214;
+  --theme-sidebar-raised: color-mix(in srgb, var(--theme-primary-deep) 29%, #101214);
+  --theme-on-sidebar: color-mix(in srgb, var(--theme-highlight) 52%, #f6f8f5);
+  --theme-sidebar-muted: color-mix(in srgb, var(--theme-primary) 35%, #a4afaa);
+}
+
+/* Shell, navigation and shared controls. */
+.sidebar { background: var(--theme-sidebar) !important; color: var(--theme-on-sidebar) !important; }
+.project-card { background: linear-gradient(140deg, var(--theme-sidebar-raised), var(--theme-sidebar)) !important; }
+.sidebar :is(.brand-lockup .brand, .create-document, .workspace-settings-link) { color: var(--theme-on-sidebar) !important; }
+.sidebar :is(.brand-subtitle, .side-heading, .sidebar-footer, .tree button, .tree-database) { color: var(--theme-sidebar-muted) !important; }
+.sidebar :is(.tree button:hover, .tree-database:hover, .create-document:hover, .workspace-settings-link:hover) { background: color-mix(in srgb, var(--theme-primary) 14%, transparent) !important; color: var(--theme-on-sidebar) !important; }
+
+/* Every visible frame shares the theme-derived line token.  Intentional
+ * semantic states below (primary and danger) override this baseline. */
+.app * { border-color: var(--line) !important; }
+
+.app :is(input:not([type="color"]), select, textarea) { background: var(--theme-input) !important; border-color: var(--line) !important; color: var(--ink) !important; }
+.app :is(input:not([type="color"]), select, textarea):is(:hover, :focus) { background: var(--theme-input-hover) !important; border-color: var(--accent-border) !important; }
+.app :is(.topbar, .rightbar, .mission-panel, .module-panel, .signal-panel, .my-work-panel, .settings-card, .settings-members, .team-card, .module-table, .task-table, .database-table-wrap, .gantt-scroll, .records, .collab-panel, .app-dialog, .template-picker, .tree-context-menu, .editor-context-menu, .slash-menu, .table-toolbar, .markdown-source) { background: var(--paper) !important; border-color: var(--line) !important; color: var(--ink); }
+.app :is(.database-controls, .database-column-composer, .member-create-card, .module-recycle, .comment-reply, .ai-messages article, .my-work-summary span, .db-board section, .task-header, .module-table header, .database-table th, .gantt-head, .gantt-days span.weekend, .gantt-track i.weekend) { background: var(--surface-soft) !important; border-color: var(--line) !important; color: var(--ink); }
+.app :is(.db-board article, .db-calendar article, .db-gallery article, .database-table, .template-picker-grid button, .task-kanban section > button, .record-attachments, .document-attachments, .module-details) { background: var(--paper) !important; border-color: var(--line) !important; color: var(--ink); }
+
+/* Accent-bearing components, including project modules, databases and editor UI. */
+.app :is(.primary, .collab-primary, .database-actions .db-primary, .member-add button, .team-add button, .task-create button, .team-account-form button, .module-create button, .gantt-create button, .dialog-primary) { background: var(--theme-primary-deep) !important; color: var(--theme-highlight) !important; border-color: var(--theme-primary-deep) !important; }
+.app :is(.role-badge, .overview-badge, .record-state, .member-list small, .comment-meta span, .database-icon, .document-icon, .profile-avatar-preview, .member-avatar) { background: var(--accent-soft) !important; color: var(--accent-ink) !important; border-color: var(--accent-border) !important; }
+.app :is(.editor-toolbar button:hover, .editor-toolbar button.active, .editor-toolbar a:hover, .view-tab.active, .database-actions button:hover, .database-bottom-add:hover, .module:hover, .template-row button:hover, .table-toolbar button:hover, .slash-menu button:hover, .tree-context-menu button:hover, .editor-context-menu button:hover, .gantt-controls button:hover) { background: var(--accent-soft) !important; color: var(--accent-ink) !important; border-color: var(--accent-border) !important; }
+.app :is(.gantt-bar, .gantt-bar.in_progress) { background: var(--theme-primary) !important; color: var(--theme-primary-deep) !important; }
+.app :is(.gantt-bar.blocked, .readiness-foot i, .workflow-state.changes_requested) { background: var(--theme-warning) !important; }
+.app :is(.editor-status::before, .live-dot, .safe-indicator, .sync-state i, .db-checkbox, .gantt-work-calendar input) { accent-color: var(--theme-primary); background-color: var(--theme-primary); }
+
+/* States deliberately retain semantic danger meaning, but still use a shared token. */
+.app :is(.dialog-danger, .module-delete, .database-danger, .editor-danger, .team-remove, .attachment-remove, .comment-actions button.danger, .tree-context-menu button.danger, .editor-context-menu button.danger) { background: var(--theme-danger-soft) !important; color: var(--theme-danger) !important; border-color: var(--theme-danger-border) !important; }
