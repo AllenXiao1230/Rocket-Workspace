@@ -11,5 +11,6 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   const parsed = schema.safeParse(await request.json().catch(() => null)); if (!parsed.success || new Set(parsed.data.rowIds).size !== parsed.data.rowIds.length) return NextResponse.json({ error: "列排序資料不正確" }, { status: 400 });
   const rows = await prisma.databaseRow.findMany({ where: { databaseId: id, deletedAt: null }, select: { id: true } }); if (rows.length !== parsed.data.rowIds.length || rows.some((row) => !parsed.data.rowIds.includes(row.id))) return NextResponse.json({ error: "列清單已變更，請重新整理後再試" }, { status: 409 });
   await prisma.$transaction(parsed.data.rowIds.map((rowId, position) => prisma.databaseRow.update({ where: { id: rowId }, data: { position } })));
+  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "database_row.reordered", entity: "database", entityId: id, workspaceId: access.database.project.workspaceId, projectId: access.database.projectId, metadata: { rowCount: parsed.data.rowIds.length } } });
   return NextResponse.json({ ok: true });
 }
