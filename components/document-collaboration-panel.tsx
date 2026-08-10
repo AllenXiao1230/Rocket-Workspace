@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type Comment = { id: string; body: string; resolvedAt: string | null; createdAt: string; isAuthor: boolean; canManage: boolean; author: { name: string }; replies: Comment[] };
 type Revision = { id: string; title: string; createdAt: string; author: { name: string } | null };
@@ -15,14 +15,14 @@ export function DocumentCollaborationPanel({ documentId, canWrite }: { documentI
   const [message, setMessage] = useState("");
   const [diff, setDiff] = useState<Array<{ type: "same" | "added" | "removed"; text: string }> | null>(null);
 
-  async function load() {
+  const load = useCallback(async () => {
     const endpoint = mode === "comments" ? "comments" : "revisions";
     const response = await fetch(`/api/documents/${documentId}/${endpoint}`);
     if (!response.ok) return setMessage("無法讀取協作資料");
     const data = await response.json();
     if (mode === "comments") setComments(data); else setRevisions(data);
-  }
-  useEffect(() => { if (mode) void load(); }, [documentId, mode]);
+  }, [documentId, mode]);
+  useEffect(() => { if (mode) void load(); }, [mode, load]);
   async function addComment(parentId?: string) {
     const value = parentId ? replyBody : body;
     if (!value.trim()) return;

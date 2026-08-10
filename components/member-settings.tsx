@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import type { TeamMember } from "@/components/team-management";
 
 const roles = { OWNER: "擁有者", ADMIN: "管理員", EDITOR: "編輯者", VIEWER: "檢視者" };
@@ -9,8 +9,8 @@ const nameOf = (member: TeamMember) => member.nickname || member.user.name;
 export function MemberSettings({ workspaceId, canManage, accountProvisioningEnabled, minimumPasswordLength, onMembersChange }: { workspaceId: string; canManage: boolean; accountProvisioningEnabled: boolean; minimumPasswordLength: number; onMembersChange: (members: TeamMember[]) => void }) {
   const [members, setMembers] = useState<TeamMember[]>([]); const [notice, setNotice] = useState(""); const [creating, setCreating] = useState(false);
   const [form, setForm] = useState({ name: "", email: "", password: "", nickname: "", teamGroup: "", jobTitle: "", role: "VIEWER" as TeamMember["role"] });
-  const reload = async () => { const response = await fetch(`/api/workspaces/${workspaceId}/members`); if (!response.ok) return; const next = await response.json() as TeamMember[]; setMembers(next); onMembersChange(next); };
-  useEffect(() => { void reload(); }, [workspaceId]);
+  const reload = useCallback(async () => { const response = await fetch(`/api/workspaces/${workspaceId}/members`); if (!response.ok) return; const next = await response.json() as TeamMember[]; setMembers(next); onMembersChange(next); }, [workspaceId, onMembersChange]);
+  useEffect(() => { void reload(); }, [reload]);
   async function create(event: React.FormEvent<HTMLFormElement>) { event.preventDefault(); setCreating(true); const response = await fetch(`/api/workspaces/${workspaceId}/accounts`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...form, nickname: form.nickname || undefined, teamGroup: form.teamGroup || undefined, jobTitle: form.jobTitle || undefined }) }); const result = await response.json(); setCreating(false); if (!response.ok) return setNotice(result.error || "無法建立帳號"); setForm({ name: "", email: "", password: "", nickname: "", teamGroup: "", jobTitle: "", role: "VIEWER" }); setNotice("帳號已建立；請安全地將初始密碼交給該成員。"); await reload(); }
   async function update(member: TeamMember, fields: Partial<Pick<TeamMember, "nickname" | "teamGroup" | "jobTitle" | "role">>) { const response = await fetch(`/api/workspaces/${workspaceId}/members/${member.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(fields) }); const result = await response.json(); if (!response.ok) return setNotice(result.error || "無法更新成員"); setMembers((current) => { const next = current.map((item) => item.id === member.id ? result : item); onMembersChange(next); return next; }); setNotice("成員資料已儲存"); }
   async function remove(member: TeamMember) { if (!window.confirm(`確定要移除「${nameOf(member)}」嗎？`)) return; const response = await fetch(`/api/workspaces/${workspaceId}/members/${member.id}`, { method: "DELETE" }); if (!response.ok) return setNotice("無法移除成員"); const next = members.filter((item) => item.id !== member.id); setMembers(next); onMembersChange(next); }

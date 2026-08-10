@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { MemberSettings } from "@/components/member-settings";
 import { accentPresets, applyAppearance, applyTheme, getStoredAppearance, type AccentPreset, type Appearance } from "@/components/theme-toggle";
 import type { TeamMember } from "@/components/team-management";
@@ -24,8 +24,8 @@ export function SettingsPanel({ projectId, workspaceId, onIdentitySaved, onMembe
 
   useEffect(() => { void fetch(`/api/projects/${projectId}/settings`).then((response) => response.ok ? response.json() : null).then(setSettings); }, [projectId]);
   useEffect(() => { void fetch("/api/account/profile").then((response) => response.ok ? response.json() : null).then(setProfile); }, []);
-  const loadAuditEvents = async () => { const response = await fetch(`/api/projects/${projectId}/audit-events?limit=50`, { cache: "no-store" }); if (!response.ok) return setAuditNotice("無法讀取操作紀錄"); const result = await response.json() as { events: AuditEvent[] }; setAuditEvents(result.events); setAuditNotice(""); };
-  useEffect(() => { if (settings?.canManage) void loadAuditEvents(); else setAuditEvents([]); }, [projectId, settings?.canManage]);
+  const loadAuditEvents = useCallback(async () => { const response = await fetch(`/api/projects/${projectId}/audit-events?limit=50`, { cache: "no-store" }); if (!response.ok) return setAuditNotice("無法讀取操作紀錄"); const result = await response.json() as { events: AuditEvent[] }; setAuditEvents(result.events); setAuditNotice(""); }, [projectId]);
+  useEffect(() => { if (settings?.canManage) void loadAuditEvents(); else setAuditEvents([]); }, [settings?.canManage, loadAuditEvents]);
   useEffect(() => { if (!settings?.canManage) return setCalendarFeed(null); void fetch(`/api/projects/${projectId}/calendar-feed`, { cache: "no-store" }).then((response) => response.ok ? response.json() : null).then(setCalendarFeed); }, [projectId, settings?.canManage]);
   useEffect(() => { setAppearance(getStoredAppearance()); }, []);
   const setTheme = (theme: "light" | "dark") => { applyTheme(theme); applyAppearance(appearance); setNotice(theme === "dark" ? "已切換為暗色模式" : "已切換為淺色模式"); };

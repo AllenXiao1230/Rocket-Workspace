@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 type Backlink = { id: string; title: string; icon: string; updatedAt: string };
 type Workflow = { properties: Record<string, string>; reviewState: "DRAFT" | "IN_REVIEW" | "APPROVED" | "CHANGES_REQUESTED"; reviewRequestedAt: string | null; reviewedAt: string | null; lockedAt: string | null; lockedById: string | null; lockedBy: { name: string } | null; reviewer: { name: string } | null; canManage: boolean; canWrite: boolean; isLockedByMe: boolean };
@@ -8,8 +8,8 @@ const reviewLabels = { DRAFT: "草稿", IN_REVIEW: "審核中", APPROVED: "已�
 
 export function DocumentWorkflowPanel({ documentId, projectId, canWrite }: { documentId: string; projectId: string; canWrite: boolean }) {
   const [workflow, setWorkflow] = useState<Workflow | null>(null); const [backlinks, setBacklinks] = useState<Backlink[]>([]); const [open, setOpen] = useState(false); const [notice, setNotice] = useState("");
-  const load = async () => { const [workflowResponse, linksResponse] = await Promise.all([fetch(`/api/documents/${documentId}/workflow`, { cache: "no-store" }), fetch(`/api/documents/${documentId}/backlinks`, { cache: "no-store" })]); if (workflowResponse.ok) setWorkflow(await workflowResponse.json()); if (linksResponse.ok) setBacklinks(await linksResponse.json()); };
-  useEffect(() => { if (open) void load(); }, [documentId, open]);
+  const load = useCallback(async () => { const [workflowResponse, linksResponse] = await Promise.all([fetch(`/api/documents/${documentId}/workflow`, { cache: "no-store" }), fetch(`/api/documents/${documentId}/backlinks`, { cache: "no-store" })]); if (workflowResponse.ok) setWorkflow(await workflowResponse.json()); if (linksResponse.ok) setBacklinks(await linksResponse.json()); }, [documentId]);
+  useEffect(() => { if (open) void load(); }, [open, load]);
   async function action(action: "lock" | "unlock" | "request_review" | "approve" | "changes_requested" | "update_properties", properties?: Record<string, string>) { const response = await fetch(`/api/documents/${documentId}/workflow`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action, properties }) }); const result = await response.json(); if (!response.ok) return setNotice(result.error || "無法更新文件工作流程"); setWorkflow(result); setNotice(action === "update_properties" ? "頁面屬性已儲存" : "文件工作流程已更新"); }
   function editProperties() { const next = { ...(workflow?.properties || {}) }; const key = window.prompt("屬性名稱，例如：文件狀態"); if (!key?.trim()) return; const value = window.prompt(`「${key.trim()}」的值`, next[key.trim()] || ""); if (value === null) return; next[key.trim()] = value; void action("update_properties", next); }
   function removeProperty(key: string) { const next = { ...(workflow?.properties || {}) }; delete next[key]; void action("update_properties", next); }
