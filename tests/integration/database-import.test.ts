@@ -6,6 +6,7 @@ const prisma = new PrismaClient();
 let workspaceId = "";
 let databaseId = "";
 let propertyId = "";
+let userId = "";
 
 beforeAll(async () => {
   const suffix = crypto.randomUUID();
@@ -19,6 +20,7 @@ beforeAll(async () => {
   workspaceId = workspace.id;
   databaseId = database.id;
   propertyId = property.id;
+  userId = user.id;
 });
 
 afterAll(async () => {
@@ -37,5 +39,26 @@ describe("database import worker", () => {
     expect(rows).toHaveLength(2);
     expect(rows.map((row) => row.values && typeof row.values === "object" && !Array.isArray(row.values) ? row.values[propertyId] : undefined)).toEqual(["first", "second"]);
     expect(rows.every((row) => row.importJobId === job.id)).toBe(true);
+  });
+
+  it("rejects an invalid batch without committing its otherwise valid rows", async () => {
+    const invalidJob = await prisma.databaseImportJob.create({
+      data: {
+        databaseId,
+        userId,
+        totalRows: 2,
+        inputRows: [{ [propertyId]: "would be valid" }, { missingProperty: "invalid" }],
+      },
+    });
+
+    await expect(processDatabaseImportJobs()).resolves.toMatchObject({ completed: 0, failed: 1 });
+
+    const [job, rows] = await Promise.all([
+      prisma.databaseImportJob.findUniqueOrThrow({ where: { id: invalidJob.id } }),
+      prisma.databaseRow.findMany({ where: { databaseId } }),
+    ]);
+    expect(job).toMatchObject({ status: "FAILED", processedRows: 2, createdRows: 0 });
+    expect(job.errorRows).toEqual([{ row: 3, message: "欄位不存在或已刪除" }]);
+    expect(rows).toHaveLength(2);
   });
 });
