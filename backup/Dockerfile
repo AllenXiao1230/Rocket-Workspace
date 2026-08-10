@@ -1,4 +1,4 @@
-FROM minio/mc:latest AS minio-client
+FROM minio/mc@sha256:a7fe349ef4bd8521fb8497f55c6042871b2ae640607cf99d9bede5e9bdf11727 AS minio-client
 
 FROM postgres:16-alpine
 RUN apk add --no-cache tar gzip tzdata
