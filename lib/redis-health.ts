@@ -1,11 +1,14 @@
-import { createClient, type RedisClientType } from "redis";
+import { createClient } from "redis";
 
-let clientPromise: Promise<RedisClientType> | null = null;
+const createRedisClient = () => createClient({ url: process.env.REDIS_URL });
+type RedisClient = ReturnType<typeof createRedisClient>;
+
+let clientPromise: Promise<RedisClient> | null = null;
 
 function client() {
   if (!clientPromise) {
     clientPromise = (async () => {
-      const next = createClient({ url: process.env.REDIS_URL });
+      const next = createRedisClient();
       next.on("error", () => undefined);
       await next.connect();
       return next;
