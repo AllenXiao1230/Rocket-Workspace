@@ -10,6 +10,8 @@ on:
 
 permissions:
   contents: read
+  # Required by Tailscale workload identity federation when private deployment is enabled.
+  id-token: write
 
 concurrency:
   group: rocket-workspace-production
@@ -28,13 +30,42 @@ jobs:
           DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DEPLOY_USE_TAILSCALE: ${{ vars.DEPLOY_USE_TAILSCALE }}
+          TS_OAUTH_CLIENT_ID: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          TS_AUDIENCE: ${{ secrets.TS_AUDIENCE }}
         run: |
+          set -Eeuo pipefail
           for name in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_KNOWN_HOSTS DEPLOY_PATH; do
             if [ -z "${!name}" ]; then
               echo "Missing Actions secret: $name" >&2
               exit 1
             fi
           done
+
+          case "${DEPLOY_USE_TAILSCALE:-false}" in
+            true)
+              for name in TS_OAUTH_CLIENT_ID TS_AUDIENCE; do
+                if [ -z "${!name}" ]; then
+                  echo "Missing Actions secret for Tailscale deployment: $name" >&2
+                  exit 1
+                fi
+              done
+              ;;
+            false) ;;
+            *)
+              echo "DEPLOY_USE_TAILSCALE must be exactly true or false." >&2
+              exit 1
+              ;;
+          esac
+
+      - name: Connect the runner to Tailscale
+        if: ${{ vars.DEPLOY_USE_TAILSCALE == 'true' }}
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          audience: ${{ secrets.TS_AUDIENCE }}
+          tags: tag:ci
+          ping: ${{ secrets.DEPLOY_HOST }}
 
       - name: Pull and restart on the server
         env:

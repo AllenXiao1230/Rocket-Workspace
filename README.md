@@ -119,7 +119,7 @@ docker compose exec backup restore-drill <backup-id>
 
 ## GitHub 推送後自動部署
 
-專案內建 [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)：推送到 `main` 後，GitHub Actions 會 SSH 到伺服器，執行 `scripts/deploy-from-github.sh`。預設**不啟用**；必須由儲存庫擁有者在 GitHub 設定後才會真的部署。
+專案內建 [`.github/workflows/deploy.yml`](.github/workflows/deploy.yml)：推送到 `main` 後，GitHub Actions 會 SSH 到伺服器，執行 `scripts/deploy-from-github.sh`。預設**不啟用**；必須由儲存庫擁有者在 GitHub 設定後才會真的部署。可選擇透過 Tailscale 私有網路連線，不必將 SSH 對公網開放。
 
 伺服器初次準備（只需一次）：
 
@@ -129,17 +129,31 @@ docker compose exec backup restore-drill <backup-id>
 
 接著到 GitHub 儲存庫的 **Settings → Secrets and variables → Actions** 設定：
 
-| 類型     | 名稱                  | 值                                                             |
-| -------- | --------------------- | -------------------------------------------------------------- |
-| Variable | `AUTO_DEPLOY_ENABLED` | `true` 才開啟自動部署；刪除或改為其他值即可停用。              |
-| Secret   | `DEPLOY_HOST`         | 伺服器 DNS 名稱或 IP。                                         |
-| Secret   | `DEPLOY_PORT`         | SSH 連接埠；留白時預設 `22`。                                  |
-| Secret   | `DEPLOY_USER`         | 專用 deploy 使用者。                                           |
-| Secret   | `DEPLOY_SSH_KEY`      | GitHub Actions 用來登入伺服器的私鑰內容。                      |
-| Secret   | `DEPLOY_KNOWN_HOSTS`  | 該伺服器的 `ssh-keyscan -H <host>` 輸出，防止 SSH 中間人攻擊。 |
-| Secret   | `DEPLOY_PATH`         | 伺服器上的專案絕對路徑，例如 `/srv/rocket-workspace`。         |
+| 類型     | 名稱                   | 值                                                                                        |
+| -------- | ---------------------- | ----------------------------------------------------------------------------------------- |
+| Variable | `AUTO_DEPLOY_ENABLED`  | `true` 才開啟自動部署；刪除或改為其他值即可停用。                                         |
+| Variable | `DEPLOY_USE_TAILSCALE` | 設為 `true` 時，讓 GitHub runner 以 Tailscale 私網連線部署。預設或 `false` 保持一般 SSH。 |
+| Secret   | `DEPLOY_HOST`          | 伺服器 DNS 名稱或 IP。                                                                    |
+| Secret   | `DEPLOY_PORT`          | SSH 連接埠；留白時預設 `22`。                                                             |
+| Secret   | `DEPLOY_USER`          | 專用 deploy 使用者。                                                                      |
+| Secret   | `DEPLOY_SSH_KEY`       | GitHub Actions 用來登入伺服器的私鑰內容。                                                 |
+| Secret   | `DEPLOY_KNOWN_HOSTS`   | 該伺服器的 `ssh-keyscan -H <host>` 輸出，防止 SSH 中間人攻擊。                            |
+| Secret   | `DEPLOY_PATH`          | 伺服器上的專案絕對路徑，例如 `/srv/rocket-workspace`。                                    |
+| Secret   | `TS_OAUTH_CLIENT_ID`   | 僅 Tailscale 模式需要：Tailscale Workload Identity 的 Client ID。                         |
+| Secret   | `TS_AUDIENCE`          | 僅 Tailscale 模式需要：同一 Workload Identity 的 Audience。                               |
 
-每次 `main` 有程式碼推送時，工作流程會先確認設定完整，再於伺服器執行 `git pull --ff-only`、重建 `app`／`collab`／`scheduler`／`backup`，並輪詢 `/api/health`。純 Markdown 與 `docs/` 推送會略過部署。伺服器有未提交的**已追蹤**修改、分支不在 `main`，或 health check 失敗時會中止並在 GitHub Actions 顯示失敗，避免覆蓋本機設定或使用者資料。
+### 以 Tailscale 私網部署
+
+若伺服器已加入 Tailnet，可使用 Tailscale IP（`100.x.x.x`）或 MagicDNS 名稱作為 `DEPLOY_HOST`。設定步驟如下：
+
+1. 在 Tailscale 管理介面建立 `tag:ci`，並在 Tailnet ACL 中只允許 `tag:ci` 連線至部署伺服器的 `tcp:22`。
+2. 建立供 GitHub Actions 使用的 Tailscale Workload Identity，並將其 Client ID 與 Audience 分別建立為 GitHub repository secrets：`TS_OAUTH_CLIENT_ID`、`TS_AUDIENCE`。
+3. 設定 GitHub Actions variable `DEPLOY_USE_TAILSCALE=true`；`DEPLOY_HOST` 填入該伺服器的 Tailscale IP 或 MagicDNS 名稱，其餘 `DEPLOY_*` SSH secrets 仍需照表設定。
+4. 用相同主機名稱或 IP 產生並核對 host key，例如 `ssh-keyscan -H <DEPLOY_HOST>`，再把輸出存為 `DEPLOY_KNOWN_HOSTS`。請在另一個可信通道核對指紋，避免接受錯誤的主機金鑰。
+
+Workflow 會以 `tag:ci` 建立暫時節點、確認能 ping 到目標後才開始 SSH，工作結束即自動移除該節點。請勿將 Tailscale auth key、OAuth secret 或 SSH 私鑰提交到 Git；此 workflow 使用 GitHub 的 OIDC token 與 Tailscale Workload Identity，不需要長期 Tailscale auth key。
+
+每次 `main` 有程式碼推送時，工作流程會先確認設定完整；啟用 Tailscale 時會先連入 Tailnet 並檢查目標可達，再於伺服器執行 `git pull --ff-only`、重建 `app`／`collab`／`scheduler`／`backup`，並輪詢 `/api/health`。純 Markdown 與 `docs/` 推送會略過部署。伺服器有未提交的**已追蹤**修改、分支不在 `main`，或 health check 失敗時會中止並在 GitHub Actions 顯示失敗，避免覆蓋本機設定或使用者資料。
 
 部署腳本會把已部署提交的 SHA 與 `package.json` 版本傳入 Docker image。登入後，右側帳號區會定期比對此 SHA 與 GitHub 儲存庫預設分支；若伺服器落後，會顯示「可更新」並彈出更新提醒。手動部署時也應帶入相同資訊：`APP_COMMIT=$(git rev-parse HEAD) APP_VERSION=$(node -p 'require("./package.json").version') docker compose up -d --build app`。如需使用 fork，請以 `UPDATE_REPOSITORY=owner/repository` 覆寫預設儲存庫。若該儲存庫是私有的，請在伺服器 `.env` 加入只讀 fine-grained Token：`UPDATE_GITHUB_TOKEN=...`；此 Token 只會用於 GitHub 版本比較，絕不會送到瀏覽器或設定頁面。
 
