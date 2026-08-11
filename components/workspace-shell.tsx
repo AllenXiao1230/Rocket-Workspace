@@ -926,6 +926,7 @@ export function WorkspaceShell({
             initialRecords={projectRecords[module]}
             members={teamMembers}
             editable={currentUser.role !== "VIEWER"}
+            canPurge={currentUser.role === "OWNER" || currentUser.role === "ADMIN"}
             initialSelectedId={module === "tasks" ? selectedTaskId : undefined}
             onSelectedIdChange={module === "tasks" ? setSelectedTaskId : undefined}
             onRecordsChange={(next) => handleModuleRecordsChange(module, next)}

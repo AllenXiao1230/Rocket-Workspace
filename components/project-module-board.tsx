@@ -39,6 +39,7 @@ export function ProjectModuleBoard({
   initialRecords,
   members,
   editable,
+  canPurge,
   initialSelectedId,
   onSelectedIdChange,
   onRecordsChange,
@@ -48,6 +49,7 @@ export function ProjectModuleBoard({
   initialRecords: ModuleRecord[];
   members: TeamMember[];
   editable: boolean;
+  canPurge: boolean;
   initialSelectedId?: string | null;
   onSelectedIdChange?: (id: string | null) => void;
   onRecordsChange?: (records: ModuleRecord[]) => void;
@@ -607,6 +609,7 @@ export function ProjectModuleBoard({
               record={selected}
               records={records}
               canEdit={canEdit}
+              canPurge={canPurge && canEdit}
               onClose={() => selectRecord(null)}
               onUpdate={update}
             />
@@ -671,6 +674,7 @@ function ModuleRecordDetails({
   record,
   records,
   canEdit,
+  canPurge,
   onClose,
   onUpdate,
 }: {
@@ -679,6 +683,7 @@ function ModuleRecordDetails({
   record: ModuleRecord;
   records: ModuleRecord[];
   canEdit: boolean;
+  canPurge: boolean;
   onClose: () => void;
   onUpdate: (record: ModuleRecord, values: Record<string, unknown>) => Promise<void>;
 }) {
@@ -1077,6 +1082,7 @@ function ModuleRecordDetails({
           module={module}
           recordId={record.id}
           canWrite={canEdit}
+          canPurge={canPurge}
         />
       )}
       {notice && <p className="collab-notice">{notice}</p>}

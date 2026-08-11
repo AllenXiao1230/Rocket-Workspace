@@ -3,9 +3,10 @@ import { auth } from "@/lib/auth";
 import { attachmentBucket, GetObjectCommand, objectStorage } from "@/lib/object-storage";
 import { enqueueAttachmentUpload, processAttachmentSyncJob } from "@/lib/attachment-sync";
 import { prisma } from "@/lib/prisma";
-import { canWrite, projectAccess } from "@/lib/permissions";
+import { canWrite } from "@/lib/permissions";
 import { readWorkspaceSettings } from "@/lib/workspace-settings";
 import { inspectUploadedFile } from "@/lib/file-signature";
+import { recordAttachmentAccess, recordAttachmentWhere } from "@/lib/record-attachments";
 
 const maxBytes = Number(process.env.MAX_ATTACHMENT_BYTES || 10 * 1024 * 1024);
 const allowedMimeTypes = new Set(
@@ -16,24 +17,6 @@ const allowedMimeTypes = new Set(
 );
 const safe = (value: string) =>
   value.replace(/[^a-zA-Z0-9._-]/g, "_").slice(0, 180) || "attachment";
-async function accessFor(
-  userId: string,
-  projectId: string,
-  module: string,
-  recordId: string,
-) {
-  const access = await projectAccess(userId, projectId);
-  if (!access || !["bom", "tests"].includes(module)) return null;
-  const record =
-    module === "bom"
-      ? await prisma.bomItem.findFirst({
-          where: { id: recordId, projectId, deletedAt: null },
-        })
-      : await prisma.testRecord.findFirst({
-          where: { id: recordId, projectId, deletedAt: null },
-        });
-  return record ? { access, record } : null;
-}
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string; module: string; recordId: string }> },
@@ -42,16 +25,16 @@ export async function GET(
   if (!session?.user?.id)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id, module, recordId } = await params;
-  const result = await accessFor(session.user.id, id, module, recordId);
+  const result = await recordAttachmentAccess(session.user.id, id, module, recordId);
   if (!result) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const attachmentId = new URL(request.url).searchParams.get("attachmentId");
   if (!attachmentId)
     return NextResponse.json(
       await prisma.attachment.findMany({
-        where:
-          module === "bom"
-            ? { bomItemId: recordId, deletedAt: null }
-            : { testRecordId: recordId, deletedAt: null },
+        where: {
+          ...recordAttachmentWhere(result.module, recordId),
+          deletedAt: null,
+        },
         select: {
           id: true,
           filename: true,
@@ -67,7 +50,7 @@ export async function GET(
     where: {
       id: attachmentId,
       deletedAt: null,
-      ...(module === "bom" ? { bomItemId: recordId } : { testRecordId: recordId }),
+      ...recordAttachmentWhere(result.module, recordId),
     },
   });
   if (!attachment) return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -97,7 +80,7 @@ export async function POST(
   if (!session?.user?.id)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id, module, recordId } = await params;
-  const result = await accessFor(session.user.id, id, module, recordId);
+  const result = await recordAttachmentAccess(session.user.id, id, module, recordId);
   if (!result || !canWrite(result.access.membership.role))
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const file = (await request.formData()).get("file");
@@ -137,7 +120,7 @@ export async function POST(
         mimeType: upload.mimeType,
         size: file.size,
         storageKey,
-        ...(module === "bom" ? { bomItemId: recordId } : { testRecordId: recordId }),
+        ...recordAttachmentWhere(result.module, recordId),
       },
     });
     await enqueueAttachmentUpload(tx, created.id, payload);
@@ -168,7 +151,7 @@ export async function DELETE(
   if (!session?.user?.id)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   const { id, module, recordId } = await params;
-  const result = await accessFor(session.user.id, id, module, recordId);
+  const result = await recordAttachmentAccess(session.user.id, id, module, recordId);
   if (!result || !canWrite(result.access.membership.role))
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   const attachmentId = new URL(request.url).searchParams.get("attachmentId");
@@ -178,7 +161,7 @@ export async function DELETE(
   const updated = await prisma.attachment.updateMany({
     where: {
       id: attachmentId,
-      ...(module === "bom" ? { bomItemId: recordId } : { testRecordId: recordId }),
+      ...recordAttachmentWhere(result.module, recordId),
       deletedAt: null,
     },
     data: { deletedAt: new Date(), deletionBatchId },
@@ -192,7 +175,7 @@ export async function DELETE(
       userId: session.user.id,
       workspaceId: result.access.project.workspaceId,
       projectId: id,
-      metadata: { module, recordId, deletionBatchId },
+      metadata: { module: result.module, recordId, deletionBatchId },
     },
   });
   return NextResponse.json({ ok: true });
