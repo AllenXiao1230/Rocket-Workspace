@@ -41,7 +41,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: cp .env.example .env
-      - run: docker compose up --detach --build app
+      - run: docker compose up --detach --build app collab scheduler
       - run: |
           deadline=$((SECONDS + 300))
           while (( SECONDS < deadline )); do
