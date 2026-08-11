@@ -14,21 +14,25 @@ export type CpmResult = {
   slackDays: number;
   critical: boolean;
 };
+import {
+  defaultWorkCalendar,
+  type WorkCalendar,
+  workingDaySpan,
+} from "@/lib/work-calendar";
 
-const oneDay = 86_400_000;
 const day = (value: Date | string | null | undefined) =>
   value ? new Date(value).getTime() : null;
-const duration = (task: CpmTask) => {
+const duration = (task: CpmTask, calendar: WorkCalendar) => {
   const start = day(task.startDate);
   const end = day(task.dueDate);
   return start !== null && end !== null
-    ? Math.max(1, Math.round((end - start) / oneDay) + 1)
+    ? workingDaySpan(new Date(start), new Date(end), calendar)
     : 1;
 };
 
 /** Forward/backward pass over finish-to-start dependencies. Dates only provide durations;
  * the result is a relative CPM network and deliberately does not mutate task dates. */
-export function calculateCriticalPath(tasks: CpmTask[]) {
+export function calculateCriticalPath(tasks: CpmTask[], calendar = defaultWorkCalendar) {
   const byId = new Map(tasks.map((task) => [task.id, task]));
   const predecessors = new Map(
     tasks.map((task) => [
@@ -69,7 +73,7 @@ export function calculateCriticalPath(tasks: CpmTask[]) {
       ),
     );
     earlyStart.set(id, es);
-    earlyFinish.set(id, es + duration(byId.get(id)!));
+    earlyFinish.set(id, es + duration(byId.get(id)!, calendar));
   }
   const projectDurationDays = Math.max(0, ...earlyFinish.values());
   const lateFinish = new Map<string, number>();
@@ -82,7 +86,7 @@ export function calculateCriticalPath(tasks: CpmTask[]) {
         )
       : projectDurationDays;
     lateFinish.set(id, lf);
-    lateStart.set(id, lf - duration(byId.get(id)!));
+    lateStart.set(id, lf - duration(byId.get(id)!, calendar));
   }
   return {
     projectDurationDays,
@@ -92,7 +96,7 @@ export function calculateCriticalPath(tasks: CpmTask[]) {
       const ls = lateStart.get(id)!;
       return {
         id,
-        durationDays: duration(byId.get(id)!),
+        durationDays: duration(byId.get(id)!, calendar),
         earlyStart: es,
         earlyFinish: earlyFinish.get(id)!,
         lateStart: ls,

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { calculateCriticalPath } from "@/lib/cpm";
+import { addWorkingDays, nextWorkingDate, workingDaySpan } from "@/lib/work-calendar";
 
 type GanttTask = {
   id: string;
@@ -65,6 +66,8 @@ export function GanttBoard({
   );
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [workingDays, setWorkingDays] = useState<number[]>([1, 2, 3, 4, 5]);
+  const [holidayDates, setHolidayDates] = useState<string[]>([]);
+  const [holidayInput, setHolidayInput] = useState("");
   const days = useMemo(
     () =>
       Array.from(
@@ -87,19 +90,33 @@ export function GanttBoard({
       .then((response) => (response.ok ? response.json() : null))
       .then((data) => {
         if (Array.isArray(data?.workingDays)) setWorkingDays(data.workingDays);
+        if (Array.isArray(data?.holidayDates)) setHolidayDates(data.holidayDates);
       });
   }, [projectId]);
-  async function saveWorkingDays(days: number[]) {
+  async function saveCalendar(changes: {
+    workingDays?: number[];
+    holidayDates?: string[];
+  }) {
     const response = await fetch(`/api/projects/${projectId}/work-calendar`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ workingDays: days }),
+      body: JSON.stringify(changes),
     });
     const result = await response.json();
     if (!response.ok) return setNotice(result.error || "工作日曆未儲存");
     setWorkingDays(result.workingDays);
+    setHolidayDates(result.holidayDates);
     setNotice("工作日曆已更新");
   }
+  const calendar = useMemo(
+    () => ({ workingDays, holidayDates }),
+    [workingDays, holidayDates],
+  );
+  const scheduledDuration = (task: GanttTask) => {
+    const start = datePart(task.startDate);
+    const end = datePart(task.dueDate);
+    return start && end ? workingDaySpan(start, end, calendar) : 1;
+  };
   async function savePlan(task: GanttTask, changes: Partial<GanttTask>) {
     try {
       const response = await fetch(
@@ -155,8 +172,8 @@ export function GanttBoard({
   function moveTask(task: GanttTask, day: Date) {
     const duration = taskDays(task);
     if (!duration) return setNotice("請先設定此任務的開始與結束日期");
-    const startDate = iso(day);
-    const dueDate = iso(new Date(day.getTime() + (duration - 1) * oneDay));
+    const startDate = nextWorkingDate(iso(day), calendar);
+    const dueDate = addWorkingDays(startDate, scheduledDuration(task) - 1, calendar);
     void savePlan(task, { startDate, dueDate });
   }
   const incompleteDependencies = (task: GanttTask) =>
@@ -174,8 +191,9 @@ export function GanttBoard({
             (dependency) => dependency.dependsOn.id,
           ),
         })),
+        calendar,
       ),
-    [tasks],
+    [tasks, calendar],
   );
   const criticalTasks = useMemo(
     () => new Set(cpm.results.filter((item) => item.critical).map((item) => item.id)),
@@ -219,13 +237,16 @@ export function GanttBoard({
         .sort()
         .at(-1);
       if (!latest) continue;
-      const minStart = iso(new Date(toDate(latest).getTime() + oneDay));
+      const minStart = nextWorkingDate(
+        iso(new Date(toDate(latest).getTime() + oneDay)),
+        calendar,
+      );
       if (!datePart(task.startDate) || datePart(task.startDate) < minStart) {
-        const duration = Math.max(1, taskDays(task));
+        const duration = scheduledDuration(task);
         changes.push({
           task,
           startDate: minStart,
-          dueDate: iso(new Date(toDate(minStart).getTime() + (duration - 1) * oneDay)),
+          dueDate: addWorkingDays(minStart, duration - 1, calendar),
         });
       }
     }
@@ -353,12 +374,46 @@ export function GanttBoard({
                   const next = event.target.checked
                     ? [...workingDays, day].sort()
                     : workingDays.filter((value) => value !== day);
-                  if (next.length) void saveWorkingDays(next);
+                  if (next.length) void saveCalendar({ workingDays: next });
                   else setNotice("至少保留一個工作日");
                 }}
               />
               {["日", "一", "二", "三", "四", "五", "六"][day]}
             </label>
+          ))}
+          <label>
+            假日
+            <input
+              type="date"
+              value={holidayInput}
+              onChange={(event) => setHolidayInput(event.target.value)}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                if (!holidayInput || holidayDates.includes(holidayInput)) return;
+                void saveCalendar({
+                  holidayDates: [...holidayDates, holidayInput].sort(),
+                });
+                setHolidayInput("");
+              }}
+            >
+              新增假日
+            </button>
+          </label>
+          {holidayDates.map((date) => (
+            <button
+              type="button"
+              className="button-secondary"
+              key={date}
+              onClick={() =>
+                void saveCalendar({
+                  holidayDates: holidayDates.filter((item) => item !== date),
+                })
+              }
+            >
+              {date} ×
+            </button>
           ))}
         </div>
       )}
