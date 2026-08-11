@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { auth } from "@/lib/auth";
+import { prisma } from "@/lib/prisma";
 import { projectAccess } from "@/lib/permissions";
 import { readWorkspaceSettings } from "@/lib/workspace-settings";
 import { fetchExternalUrl } from "@/lib/external-url";
@@ -15,6 +16,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const ai = (await readWorkspaceSettings(access.project.workspaceId)).ai;
   if (!ai.enabled) return NextResponse.json({ error: "管理者尚未啟用 AI 助手" }, { status: 403 });
   if (!ai.baseUrl || !ai.model || (ai.provider === "OPENAI_COMPATIBLE" && !ai.apiKey)) return NextResponse.json({ error: "AI 設定尚未完成；請由管理員填入服務網址、模型與必要金鑰" }, { status: 422 });
+  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "ai.chat_requested", entity: "ai", entityId: id, workspaceId: access.project.workspaceId, projectId: id, metadata: { provider: ai.provider, model: ai.model, hasContext: Boolean(input.data.context) } } });
   try {
     const messages = [{ role: "system", content: "你是 Rocket Workspace 的繁體中文專案協作助手。回答務必精確、簡潔，並在不確定時清楚標註。" }, ...(input.data.context ? [{ role: "system", content: `目前文件內容：\n${input.data.context}` }] : []), { role: "user", content: input.data.prompt }];
     const response = await fetchExternalUrl(await endpoint(ai.baseUrl, ai.provider), "AI", ai.provider, { method: "POST", headers: { "Content-Type": "application/json", ...(ai.provider === "OPENAI_COMPATIBLE" ? { Authorization: `Bearer ${ai.apiKey}` } : {}) }, body: JSON.stringify(ai.provider === "OLLAMA" ? { model: ai.model, messages, stream: false } : { model: ai.model, messages, temperature: 0.2 }), signal: AbortSignal.timeout(60_000) });

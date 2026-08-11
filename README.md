@@ -15,7 +15,8 @@
 - **文件協作周邊**：留言串、回覆、解析、刪除、版本歷史與還原、MinIO 附件上傳／下載／刪除、站內通知。
 - **日曆同步**：每個專案可在設定中心建立可輪替、可撤銷的標準 iCalendar（`.ics`）訂閱網址；Google Calendar、Apple Calendar、Outlook 等可唯讀同步有日期的任務與測試紀錄，權杖只儲存 SHA-256 雜湊。
 - **設定與維運**：明暗模式、主題配色、專案資訊、工作空間隔離的安全／功能開關與管理者操作紀錄；主機備份排程僅由系統管理員調整，並備份 PostgreSQL、Markdown、MinIO 附件及完整性資訊。
-- **AI 與外部整合**：可在設定中心設定 OpenAI-compatible API 或 Ollama，於「AI 與整合」頁面對話；GitHub Issue 為唯讀查詢，Webhook 可帶 HMAC SHA-256 簽章送出測試事件。每個工作空間的密鑰以 AES-256-GCM 加密存於 PostgreSQL、永不回顯；外連一律驗證 HTTPS 與私有網路位址，Ollama 僅允許受信任的內部主機。
+- **AI 與外部整合**：可在設定中心設定 OpenAI-compatible API 或 Ollama，於「AI 與整合」頁面對話；GitHub Issue 為唯讀查詢，Webhook 可帶 HMAC SHA-256 簽章送出測試事件。每個工作空間的密鑰以 AES-256-GCM 加密存於 PostgreSQL、永不回顯；外連一律驗證 HTTPS、私有網路位址與實際連線 IP，Ollama 僅允許受信任的內部主機。AI 請求與 Webhook 測試會保留不含提示、回覆或密鑰的稽核事件。
+- **規模與維運可觀測性**：首頁文件樹、資料庫列與專案模組紀錄採 cursor 分頁；資料庫欄位、檢視與模板會在選取資料庫時按需載入。`/api/health` 提供完整 readiness 檢查，`/api/live` 提供不依賴外部服務的 liveness 檢查。
 - **部署**：Docker Compose 一鍵啟動 Next.js、PostgreSQL、Redis、MinIO、Yjs 協作、任務 scheduler 與備份服務；資料庫 migration 自動套用。
 
 ## 仍需加強／尚未完成
@@ -25,7 +26,7 @@
 1. **帳號與企業整合**：沒有忘記密碼信、邀請信、2FA、SSO、帳號停用、細粒度頁面分享或對外訪客流程。（依本輪範圍暫不處理）
 2. **產品深化的待辦**：公式錯誤目前只在檢視中顯示，尚未提供歷史追蹤；Rollup 仍即時計算，尚未建立背景快取。跨文件同步區塊尚未提供完整 UI；圖片與嵌入內容是可協作的 Tiptap 節點，但 Markdown 只能保留退化的文字表示。
 3. **工作流深化的待辦**：通知目前涵蓋 SLA 到期提醒，但尚未提供管理者可編輯的細粒度通知規則與假日例外日曆。
-4. **進階外部整合**：目前提供 OpenAI-compatible、Ollama、GitHub Issue、通用 Webhook 與 iCalendar 唯讀訂閱；AI 的串流/停止、範圍引用、成本上限與 audit，及 OAuth/App 安裝、同步游標、重試/DLQ、GitHub 寫入、CalDAV／Google／Outlook 雙向寫入仍未實作。
+4. **進階外部整合**：目前提供 OpenAI-compatible、Ollama、GitHub Issue、通用 Webhook 與 iCalendar 唯讀訂閱；AI 的串流/停止、範圍引用、成本上限，以及 OAuth/App 安裝、同步游標、重試/DLQ、GitHub 寫入、CalDAV／Google／Outlook 雙向寫入仍未實作。AI 請求與 Webhook 測試已有不含敏感內容的稽核紀錄。
 5. **營運驗證深度**：已加入單元測試、備份完整性檢查、隔離還原演練及可重複執行的三節點 Yjs 壓測；跨可用區故障轉移與瀏覽器端端對端測試仍應在正式擴容前執行。
 
 完整限制與改善方向請見 [docs/functionality-audit.md](docs/functionality-audit.md) 與 [docs/markdown-editor-audit.md](docs/markdown-editor-audit.md)。
@@ -48,7 +49,7 @@
 
 4. 開啟 `http://localhost:3000`，以 bootstrap 管理員帳號登入。
 
-服務就緒探針為 `http://localhost:3000/api/health`：它只回傳 `ok` 或 `degraded`，並確認應用程式可連上 PostgreSQL，不會洩漏帳號或設定內容。
+服務就緒探針為 `http://localhost:3000/api/health`：它只回傳 `ok` 或 `degraded`，並確認 PostgreSQL、MinIO、Redis、協作服務、scheduler 心跳與 migration 版本；不會洩漏帳號或設定內容。容器存活探針為 `http://localhost:3000/api/live`，不依賴外部服務。
 
 首次啟動會建立 `Rocket Workspace` 與範例專案。MinIO 管理介面僅供基礎設施管理，位於 `http://localhost:9001`；請使用 `.env` 中的 `MINIO_ACCESS_KEY` 與 `MINIO_SECRET_KEY` 登入。
 
