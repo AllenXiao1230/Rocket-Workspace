@@ -202,6 +202,13 @@ pnpm test
 pnpm build
 ```
 
+`pnpm test` 與 `pnpm test:coverage` 只執行不需要服務的單元／路由測試。需要 PostgreSQL 與 MinIO 的整合測試必須明確準備隔離資料庫後執行，避免誤寫入應用程式資料庫：
+
+```bash
+pnpm test:integration:prepare
+pnpm test:integration
+```
+
 資料庫 schema 的唯一來源是 [prisma/schema.prisma](prisma/schema.prisma)。任何結構變更都必須新增 Prisma migration，不能只依賴 `db push`。
 
 ## 授權

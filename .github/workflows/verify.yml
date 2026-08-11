@@ -23,6 +23,7 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm prisma generate
       - run: pnpm lint
+      - run: pnpm typecheck
       - run: pnpm test:coverage
       - run: pnpm build
 
