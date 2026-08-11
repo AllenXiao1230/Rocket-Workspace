@@ -2,6 +2,7 @@ import { AutomationTrigger, Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { applyAutomations } from "@/lib/database-automations";
 import { validateRowValues } from "@/lib/database-validation";
+import { recordFormulaFailures } from "@/lib/formula-error-history";
 
 type InputRow = Record<string, unknown>;
 type ImportError = { row: number | null; message: string };
@@ -43,7 +44,7 @@ export async function processDatabaseImportJobs(limit = 1) {
         ) as unknown as InputRow[])
       : [];
     try {
-      const [properties, automations] = await Promise.all([
+      const [properties, automations, database] = await Promise.all([
         prisma.databaseProperty.findMany({
           where: { databaseId: job.databaseId, deletedAt: null },
           select: { id: true, name: true, type: true, options: true },
@@ -55,6 +56,10 @@ export async function processDatabaseImportJobs(limit = 1) {
             enabled: true,
           },
           select: { name: true, action: true, config: true },
+        }),
+        prisma.database.findUniqueOrThrow({
+          where: { id: job.databaseId },
+          select: { projectId: true, project: { select: { workspaceId: true } } },
         }),
       ]);
       const rows: Prisma.InputJsonValue[] = [];
@@ -113,6 +118,17 @@ export async function processDatabaseImportJobs(limit = 1) {
             position: position + index,
             importJobId: job.id,
           })),
+        });
+        const createdRows = await tx.databaseRow.findMany({
+          where: { databaseId: job.databaseId, importJobId: job.id },
+          select: { id: true, values: true },
+        });
+        await recordFormulaFailures(tx, {
+          databaseId: job.databaseId,
+          projectId: database.projectId,
+          workspaceId: database.project.workspaceId,
+          properties,
+          rows: createdRows,
         });
         if (notifications.length)
           await tx.notification.createMany({

@@ -241,6 +241,7 @@ model Database {
   templates        DatabaseTemplate[]
   automations      DatabaseAutomation[]
   importJobs       DatabaseImportJob[]
+  formulaErrors    FormulaEvaluationError[]
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
 
@@ -277,6 +278,7 @@ model DatabaseProperty {
   deletionBatchId String?
   databaseId      String
   database        Database             @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+  formulaErrors   FormulaEvaluationError[]
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 
@@ -337,6 +339,7 @@ model DatabaseRow {
   importJobId     String?
   databaseId      String
   database        Database  @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+  formulaErrors   FormulaEvaluationError[]
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -344,6 +347,27 @@ model DatabaseRow {
   @@index([databaseId, deletedAt])
   @@index([deletionBatchId])
   @@index([importJobId])
+}
+
+// Formula errors retain only identifiers, a stable error code and an expression
+// fingerprint. Row values and the formula source are deliberately not persisted.
+model FormulaEvaluationError {
+  id             String           @id @default(cuid())
+  code           String
+  expressionHash String
+  databaseId     String
+  propertyId     String
+  rowId          String
+  projectId      String
+  workspaceId    String
+  createdAt      DateTime         @default(now())
+  database       Database         @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+  property       DatabaseProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  row            DatabaseRow      @relation(fields: [rowId], references: [id], onDelete: Cascade)
+
+  @@index([databaseId, propertyId, createdAt])
+  @@index([databaseId, createdAt])
+  @@index([projectId, createdAt])
 }
 
 model Document {

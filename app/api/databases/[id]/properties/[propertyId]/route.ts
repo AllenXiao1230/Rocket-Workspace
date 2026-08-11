@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { canWrite, databaseAccess } from "@/lib/permissions";
 import { validatePropertyOptions } from "@/lib/database-validation";
 import { validatePropertyReference } from "@/lib/database-reference-validation";
+import { recordFormulaFailures } from "@/lib/formula-error-history";
 
 const optionValue = z.union([
   z.array(z.string().trim().min(1).max(50)).max(40),
@@ -87,17 +88,35 @@ export async function PATCH(
   });
   if (referenceIssues.length)
     return NextResponse.json({ error: referenceIssues[0].message }, { status: 400 });
-  const updated = await prisma.databaseProperty.update({
-    where: { id: propertyId },
-    data: {
-      ...parsed.data,
-      options:
-        parsed.data.options === undefined
-          ? undefined
-          : parsed.data.options === null
-            ? Prisma.JsonNull
-            : (parsed.data.options as Prisma.InputJsonValue),
-    },
+  const updated = await prisma.$transaction(async (tx) => {
+    const next = await tx.databaseProperty.update({
+      where: { id: propertyId },
+      data: {
+        ...parsed.data,
+        options:
+          parsed.data.options === undefined
+            ? undefined
+            : parsed.data.options === null
+              ? Prisma.JsonNull
+              : (parsed.data.options as Prisma.InputJsonValue),
+      },
+    });
+    if (next.type === "FORMULA") {
+      const rows = await tx.databaseRow.findMany({
+        where: { databaseId: id, deletedAt: null },
+        select: { id: true, values: true },
+      });
+      await recordFormulaFailures(tx, {
+        databaseId: id,
+        projectId: access.database.projectId,
+        workspaceId: access.database.project.workspaceId,
+        properties: nextSourceProperties.map((item) =>
+          item.id === propertyId ? next : item,
+        ),
+        rows,
+      });
+    }
+    return next;
   });
   await prisma.auditEvent.create({
     data: {

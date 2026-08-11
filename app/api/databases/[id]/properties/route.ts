@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { canWrite, databaseAccess } from "@/lib/permissions";
 import { validatePropertyOptions } from "@/lib/database-validation";
 import { validatePropertyReference } from "@/lib/database-reference-validation";
+import { recordFormulaFailures } from "@/lib/formula-error-history";
 
 const optionValue = z.union([
   z.array(z.string().trim().min(1).max(50)).max(40),
@@ -85,14 +86,30 @@ export async function POST(
     where: { databaseId: id, deletedAt: null },
     _max: { position: true },
   });
-  const property = await prisma.databaseProperty.create({
-    data: {
-      databaseId: id,
-      name: parsed.data.name,
-      type: parsed.data.type,
-      options: parsed.data.options as Prisma.InputJsonValue | undefined,
-      position: (max._max.position ?? -1) + 1,
-    },
+  const property = await prisma.$transaction(async (tx) => {
+    const created = await tx.databaseProperty.create({
+      data: {
+        databaseId: id,
+        name: parsed.data.name,
+        type: parsed.data.type,
+        options: parsed.data.options as Prisma.InputJsonValue | undefined,
+        position: (max._max.position ?? -1) + 1,
+      },
+    });
+    if (created.type === "FORMULA") {
+      const rows = await tx.databaseRow.findMany({
+        where: { databaseId: id, deletedAt: null },
+        select: { id: true, values: true },
+      });
+      await recordFormulaFailures(tx, {
+        databaseId: id,
+        projectId: access.database.projectId,
+        workspaceId: access.database.project.workspaceId,
+        properties: [...sourceProperties, created],
+        rows,
+      });
+    }
+    return created;
   });
   await prisma.auditEvent.create({
     data: {

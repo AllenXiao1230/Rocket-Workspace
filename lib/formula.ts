@@ -1,17 +1,30 @@
+export type FormulaEvaluationCode =
+  | "INVALID_EXPRESSION"
+  | "INVALID_ARITHMETIC"
+  | "DIVISION_BY_ZERO"
+  | "NON_FINITE_RESULT";
+
+export type FormulaEvaluationResult =
+  | { value: string; code: null }
+  | { value: null; code: FormulaEvaluationCode };
+
 /** Evaluate the small arithmetic subset supported by database formulas.
  * It deliberately accepts only numbers, parentheses, and + - * / % operators. */
-export function evaluateFormula(
+export function evaluateFormulaResult(
   expression: string,
   valueForName: (name: string) => unknown,
-): string | null {
+): FormulaEvaluationResult {
   const expanded = expression.replace(/\{([^}]+)\}/g, (_, name) =>
     String(Number(valueForName(String(name).trim())) || 0),
   );
   const compact = expanded.replace(/\s+/g, "");
-  if (!compact || !/^[\d+\-*/%.()]+$/.test(compact)) return null;
+  if (!compact || !/^[\d+\-*/%.()]+$/.test(compact))
+    return { value: null, code: "INVALID_EXPRESSION" };
   const tokens = compact.match(/\d+(?:\.\d+)?|[()+\-*/%]/g);
-  if (!tokens || tokens.join("") !== compact) return null;
+  if (!tokens || tokens.join("") !== compact)
+    return { value: null, code: "INVALID_EXPRESSION" };
   let index = 0;
+  let divisionByZero = false;
   const factor = (): number | null => {
     const token = tokens[index++];
     if (token === "+") return factor();
@@ -32,8 +45,11 @@ export function evaluateFormula(
     while (value !== null && ["*", "/", "%"].includes(tokens[index])) {
       const operator = tokens[index++];
       const right = factor();
-      if (right === null || ((operator === "/" || operator === "%") && right === 0))
+      if (right === null) return null;
+      if ((operator === "/" || operator === "%") && right === 0) {
+        divisionByZero = true;
         return null;
+      }
       value =
         operator === "*"
           ? value * right
@@ -54,7 +70,16 @@ export function evaluateFormula(
     return value;
   };
   const result = expressionRule();
-  return result === null || index !== tokens.length || !Number.isFinite(result)
-    ? null
-    : String(result);
+  if (divisionByZero) return { value: null, code: "DIVISION_BY_ZERO" };
+  if (result === null || index !== tokens.length)
+    return { value: null, code: "INVALID_ARITHMETIC" };
+  if (!Number.isFinite(result)) return { value: null, code: "NON_FINITE_RESULT" };
+  return { value: String(result), code: null };
+}
+
+export function evaluateFormula(
+  expression: string,
+  valueForName: (name: string) => unknown,
+): string | null {
+  return evaluateFormulaResult(expression, valueForName).value;
 }

@@ -20,8 +20,10 @@ compose([
   'if [ "$(psql -U "$POSTGRES_USER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname = \'$TEST_DATABASE_NAME\'")" != "1" ]; then createdb -U "$POSTGRES_USER" "$TEST_DATABASE_NAME"; fi',
 ]);
 compose([
-  "exec",
-  "-T",
+  "run",
+  "--rm",
+  "--build",
+  "--no-deps",
   "-e",
   `TEST_DATABASE_NAME=${databaseName}`,
   "app",

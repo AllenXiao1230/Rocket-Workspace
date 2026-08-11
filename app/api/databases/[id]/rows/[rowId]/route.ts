@@ -6,6 +6,7 @@ import { canWrite, databaseAccess } from "@/lib/permissions";
 import { applyRowAutomations } from "@/lib/database-automations";
 import { AutomationTrigger } from "@prisma/client";
 import { validateRowValues } from "@/lib/database-validation";
+import { recordFormulaFailures } from "@/lib/formula-error-history";
 
 export async function PATCH(
   request: Request,
@@ -77,6 +78,13 @@ export async function PATCH(
       await tx.notification.create({
         data: { userId: session.user.id, ...notification },
       });
+    await recordFormulaFailures(tx, {
+      databaseId: id,
+      projectId: access.database.projectId,
+      workspaceId: access.database.project.workspaceId,
+      properties,
+      rows: [updated, ...createdRows],
+    });
     return { updated, createdRows };
   });
   await prisma.auditEvent.create({

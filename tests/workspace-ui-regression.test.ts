@@ -44,4 +44,12 @@ describe("工作空間設定與導覽介面", () => {
       ".settings-grid .settings-card:nth-of-type(3){grid-area:backup}",
     );
   });
+
+  it("提供公式錯誤歷史的載入、空狀態與失敗狀態", () => {
+    const source = read("components/database-view.tsx");
+    expect(source).toContain("公式錯誤紀錄");
+    expect(source).toContain("正在載入公式錯誤紀錄");
+    expect(source).toContain("目前沒有已記錄的公式錯誤");
+    expect(source).toContain("無法載入公式錯誤紀錄");
+  });
 });

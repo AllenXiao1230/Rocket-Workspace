@@ -69,6 +69,14 @@ export type DatabaseAutomation = {
   config: Record<string, unknown>;
   enabled: boolean;
 };
+type FormulaErrorHistoryEntry = {
+  id: string;
+  rowId: string;
+  propertyId: string;
+  code: string;
+  createdAt: string;
+  property: { name: string };
+};
 export type DatabaseData = {
   id: string;
   name: string;
@@ -486,6 +494,11 @@ export function DatabaseTable({
   >([]);
   const [nextRowCursor, setNextRowCursor] = useState<string | null>(null);
   const [loadingRows, setLoadingRows] = useState(false);
+  const [showFormulaErrors, setShowFormulaErrors] = useState(false);
+  const [formulaErrors, setFormulaErrors] = useState<FormulaErrorHistoryEntry[]>([]);
+  const [formulaErrorsState, setFormulaErrorsState] = useState<
+    "idle" | "loading" | "error"
+  >("idle");
   const [importJob, setImportJob] = useState<{
     id: string;
     status: string;
@@ -501,6 +514,11 @@ export function DatabaseTable({
   useEffect(() => {
     setActiveId(database.views[0]?.id || "");
   }, [database.views]);
+  useEffect(() => {
+    setShowFormulaErrors(false);
+    setFormulaErrors([]);
+    setFormulaErrorsState("idle");
+  }, [database.id]);
   useEffect(() => {
     const nextSort = (activeView?.sort || {}) as Sort & { sorts?: Sort[] };
     setFilter((activeView?.filter || {}) as FilterNode);
@@ -606,6 +624,31 @@ export function DatabaseTable({
     } finally {
       setLoadingRows(false);
     }
+  }
+  async function loadFormulaErrors() {
+    setFormulaErrorsState("loading");
+    try {
+      const response = await fetch(
+        `/api/databases/${database.id}/formula-errors?take=30`,
+        {
+          cache: "no-store",
+        },
+      );
+      const result = (await response.json()) as {
+        errors?: FormulaErrorHistoryEntry[];
+        error?: string;
+      };
+      if (!response.ok) throw new Error(result.error || "無法讀取公式錯誤紀錄");
+      setFormulaErrors(result.errors || []);
+      setFormulaErrorsState("idle");
+    } catch {
+      setFormulaErrorsState("error");
+    }
+  }
+  function toggleFormulaErrors() {
+    const next = !showFormulaErrors;
+    setShowFormulaErrors(next);
+    if (next) void loadFormulaErrors();
   }
   async function addRow(values: Record<string, unknown> = {}) {
     try {
@@ -1937,6 +1980,11 @@ export function DatabaseTable({
         </div>
         <div className="database-actions">
           <button onClick={() => setControls(!controls)}>篩選與排序</button>
+          {database.properties.some((property) => property.type === "FORMULA") && (
+            <button className="button-secondary" onClick={toggleFormulaErrors}>
+              {showFormulaErrors ? "收合公式錯誤" : "公式錯誤紀錄"}
+            </button>
+          )}
           {editable && (
             <>
               <button onClick={() => setShowColumnComposer(true)}>＋ 新增欄位</button>
@@ -1972,6 +2020,30 @@ export function DatabaseTable({
           )}
         </div>
       </div>
+      {showFormulaErrors && (
+        <section className="module-recycle formula-error-history">
+          <h2>公式錯誤紀錄</h2>
+          {formulaErrorsState === "loading" ? (
+            <p className="hint">正在載入公式錯誤紀錄…</p>
+          ) : formulaErrorsState === "error" ? (
+            <p className="hint">無法載入公式錯誤紀錄，請稍後再試。</p>
+          ) : formulaErrors.length ? (
+            formulaErrors.map((error) => (
+              <article key={error.id}>
+                <span>
+                  <strong>{error.property.name}</strong>
+                  <small>
+                    列 {error.rowId.slice(-6).toUpperCase()} · {error.code} ·{" "}
+                    {new Date(error.createdAt).toLocaleString("zh-TW")}
+                  </small>
+                </span>
+              </article>
+            ))
+          ) : (
+            <p className="hint">目前沒有已記錄的公式錯誤。</p>
+          )}
+        </section>
+      )}
       {showColumnComposer && (
         <form className="database-column-composer" onSubmit={addProperty}>
           <div>

@@ -6,6 +6,7 @@ import { canWrite, databaseAccess } from "@/lib/permissions";
 import { applyRowAutomations } from "@/lib/database-automations";
 import { AutomationTrigger } from "@prisma/client";
 import { validateRowValues } from "@/lib/database-validation";
+import { recordFormulaFailures } from "@/lib/formula-error-history";
 
 const pageSize = (value: string | null) =>
   Math.min(250, Math.max(1, Number(value) || 100));
@@ -99,6 +100,13 @@ export async function POST(
       await tx.notification.create({
         data: { userId: session.user.id, ...notification },
       });
+    await recordFormulaFailures(tx, {
+      databaseId: id,
+      projectId: access.database.projectId,
+      workspaceId: access.database.project.workspaceId,
+      properties,
+      rows: [row, ...createdRows],
+    });
     return { row, createdRows };
   });
   await prisma.auditEvent.create({

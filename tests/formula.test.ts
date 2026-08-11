@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { evaluateFormula } from "@/lib/formula";
+import { evaluateFormula, evaluateFormulaResult } from "@/lib/formula";
 
 describe("database formula evaluator", () => {
   it("evaluates values with ordinary arithmetic precedence", () => {
@@ -10,5 +10,15 @@ describe("database formula evaluator", () => {
   it("rejects executable text and invalid arithmetic", () => {
     expect(evaluateFormula("process.exit()", () => 0)).toBeNull();
     expect(evaluateFormula("10 / 0", () => 0)).toBeNull();
+  });
+  it("returns a stable, non-sensitive failure code for history recording", () => {
+    expect(evaluateFormulaResult("10 / {除數}", () => 0)).toEqual({
+      value: null,
+      code: "DIVISION_BY_ZERO",
+    });
+    expect(evaluateFormulaResult("process.exit()", () => 0)).toMatchObject({
+      value: null,
+      code: "INVALID_EXPRESSION",
+    });
   });
 });
