@@ -3,6 +3,7 @@ import { processDocumentSyncJobs } from "@/lib/document-sync";
 import { processDatabaseImportJobs } from "@/lib/database-import";
 import { processAttachmentSyncJobs } from "@/lib/attachment-sync";
 import { recordSchedulerHeartbeat } from "@/lib/scheduler-heartbeat";
+import { refreshDatabaseRollupCache } from "@/lib/database-rollup-cache";
 
 const intervalMs = Math.max(
   60_000,
@@ -10,12 +11,14 @@ const intervalMs = Math.max(
 );
 async function tick() {
   try {
-    const [result, documentSync, databaseImports, attachmentSync] = await Promise.all([
-      runTaskAutomation(),
-      processDocumentSyncJobs(),
-      processDatabaseImportJobs(),
-      processAttachmentSyncJobs(),
-    ]);
+    const [result, documentSync, databaseImports, attachmentSync, rollupCache] =
+      await Promise.all([
+        runTaskAutomation(),
+        processDocumentSyncJobs(),
+        processDatabaseImportJobs(),
+        processAttachmentSyncJobs(),
+        refreshDatabaseRollupCache(),
+      ]);
     await recordSchedulerHeartbeat();
     console.log(
       JSON.stringify({
@@ -24,6 +27,7 @@ async function tick() {
         documentSync,
         databaseImports,
         attachmentSync,
+        rollupCache,
       }),
     );
   } catch (error) {

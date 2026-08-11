@@ -1,6 +1,7 @@
 "use client";
 
-import { FormEvent, useEffect, useRef, useState } from "react";
+import { FormEvent, useState } from "react";
+import { useDialogFocus } from "@/lib/use-dialog-focus";
 
 export type FormDialogField = {
   name: string;
@@ -37,17 +38,7 @@ export function FormDialog({
       fields.map((field) => [field.name, initialValues[field.name] || ""]),
     ),
   );
-  const firstInputRef = useRef<HTMLInputElement>(null);
-  const submitRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    (firstInputRef.current || submitRef.current)?.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCancel();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onCancel]);
+  const dialogRef = useDialogFocus<HTMLFormElement>(true, onCancel);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -57,11 +48,13 @@ export function FormDialog({
   return (
     <div className="app-dialog-backdrop" role="presentation" onMouseDown={onCancel}>
       <form
+        ref={dialogRef}
         className="app-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby="form-dialog-title"
         aria-describedby="form-dialog-description"
+        tabIndex={-1}
         onMouseDown={(event) => event.stopPropagation()}
         onSubmit={submit}
       >
@@ -74,6 +67,7 @@ export function FormDialog({
             {field.type === "select" ? (
               <select
                 autoFocus={index === 0}
+                data-dialog-initial-focus={index === 0 || undefined}
                 value={values[field.name] || ""}
                 required={field.required}
                 onChange={(event) =>
@@ -91,8 +85,8 @@ export function FormDialog({
               </select>
             ) : (
               <input
-                ref={index === 0 ? firstInputRef : undefined}
                 type={field.type || "text"}
+                data-dialog-initial-focus={index === 0 || undefined}
                 value={values[field.name] || ""}
                 placeholder={field.placeholder}
                 required={field.required}
@@ -112,7 +106,11 @@ export function FormDialog({
           <button type="button" className="dialog-secondary" onClick={onCancel}>
             取消
           </button>
-          <button ref={submitRef} type="submit" className="dialog-primary">
+          <button
+            type="submit"
+            className="dialog-primary"
+            data-dialog-initial-focus={!fields.length || undefined}
+          >
             {submitLabel}
           </button>
         </footer>

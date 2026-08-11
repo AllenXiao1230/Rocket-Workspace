@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useDialogFocus } from "@/lib/use-dialog-focus";
 
 type Backlink = { id: string; title: string; icon: string; updatedAt: string };
 type Workflow = {
@@ -41,6 +42,9 @@ export function DocumentWorkflowPanel({
     key: string;
     value: string;
   } | null>(null);
+  const propertyDialogRef = useDialogFocus<HTMLElement>(Boolean(propertyDraft), () =>
+    setPropertyDraft(null),
+  );
 
   const load = useCallback(async () => {
     const [workflowResponse, linksResponse] = await Promise.all([
@@ -54,15 +58,6 @@ export function DocumentWorkflowPanel({
   useEffect(() => {
     if (open) void load();
   }, [open, load]);
-  useEffect(() => {
-    if (!propertyDraft) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setPropertyDraft(null);
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [propertyDraft]);
-
   async function action(
     actionName:
       | "lock"
@@ -224,10 +219,12 @@ export function DocumentWorkflowPanel({
           onMouseDown={() => setPropertyDraft(null)}
         >
           <section
+            ref={propertyDialogRef}
             className="app-dialog"
             role="dialog"
             aria-modal="true"
             aria-labelledby="property-dialog-title"
+            tabIndex={-1}
             onMouseDown={(event) => event.stopPropagation()}
           >
             <p className="eyebrow">頁面屬性</p>
@@ -236,6 +233,7 @@ export function DocumentWorkflowPanel({
               <label>
                 屬性名稱
                 <input
+                  data-dialog-initial-focus
                   autoFocus
                   value={propertyDraft.key}
                   onChange={(event) =>

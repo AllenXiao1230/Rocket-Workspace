@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useDialogFocus } from "@/lib/use-dialog-focus";
 
 type Template = {
   id: string;
@@ -34,14 +35,17 @@ export function DocumentTemplatePicker({
       .then((response) => (response.ok ? response.json() : []))
       .then(setTemplates);
   }, [open, projectId]);
+  const dialogRef = useDialogFocus<HTMLElement>(open, onClose);
   if (!open) return null;
   return (
     <div className="template-picker-backdrop" role="presentation" onMouseDown={onClose}>
       <section
+        ref={dialogRef}
         className="template-picker"
         role="dialog"
         aria-modal="true"
         aria-label="選擇文件模板"
+        tabIndex={-1}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header>
@@ -49,7 +53,7 @@ export function DocumentTemplatePicker({
             <p className="eyebrow">文件模板</p>
             <h2>由模板建立頁面</h2>
           </div>
-          <button type="button" onClick={onClose}>
+          <button type="button" data-dialog-initial-focus onClick={onClose}>
             ×
           </button>
         </header>

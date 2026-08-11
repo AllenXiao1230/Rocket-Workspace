@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useDialogFocus } from "@/lib/use-dialog-focus";
 
 type ConfirmDialogProps = {
   title: string;
@@ -19,36 +19,33 @@ export function ConfirmDialog({
   onCancel,
   onConfirm,
 }: ConfirmDialogProps) {
-  const confirmRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    confirmRef.current?.focus();
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onCancel();
-    };
-    window.addEventListener("keydown", onKeyDown);
-    return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onCancel]);
+  const dialogRef = useDialogFocus<HTMLElement>(true, onCancel);
 
   return (
     <div className="app-dialog-backdrop" role="presentation" onMouseDown={onCancel}>
       <section
+        ref={dialogRef}
         className="app-dialog"
         role="alertdialog"
         aria-modal="true"
         aria-labelledby="confirm-dialog-title"
         aria-describedby="confirm-dialog-description"
+        tabIndex={-1}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <p className="eyebrow">請確認操作</p>
         <h2 id="confirm-dialog-title">{title}</h2>
         <p id="confirm-dialog-description">{description}</p>
         <footer>
-          <button type="button" className="dialog-secondary" onClick={onCancel}>
+          <button
+            type="button"
+            className="dialog-secondary"
+            data-dialog-initial-focus
+            onClick={onCancel}
+          >
             取消
           </button>
           <button
-            ref={confirmRef}
             type="button"
             className={destructive ? "dialog-danger" : "dialog-primary"}
             onClick={onConfirm}

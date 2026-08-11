@@ -13,6 +13,13 @@ describe("task recurrence rules", () => {
     expect(isRecurrenceRule("FREQ=MONTHLY;INTERVAL=1")).toBe(true);
   });
 
+  it("keeps recurrence dates on their calendar schedule", () => {
+    const friday = new Date("2026-08-14T00:00:00.000Z");
+    expect(nextRecurrenceOccurrence("FREQ=DAILY;INTERVAL=1", friday)?.toISOString()).toBe(
+      "2026-08-15T00:00:00.000Z",
+    );
+  });
+
   it("rejects malformed schedules before they reach the worker", () => {
     expect(nextRecurrenceOccurrence("every week", new Date())).toBeNull();
     expect(isRecurrenceRule("FREQ=HOURLY;INTERVAL=1")).toBe(false);

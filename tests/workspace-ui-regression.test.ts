@@ -52,4 +52,9 @@ describe("工作空間設定與導覽介面", () => {
     expect(source).toContain("目前沒有已記錄的公式錯誤");
     expect(source).toContain("無法載入公式錯誤紀錄");
   });
+
+  it("在文件中提供雙向同步區塊", () => {
+    expect(read("components/collaborative-editor.tsx")).toContain("DocumentSyncBlocks");
+    expect(read("components/document-sync-blocks.tsx")).toContain("建立同步區塊");
+  });
 });

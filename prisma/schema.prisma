@@ -209,6 +209,7 @@ model Project {
   testPlans         TestPlan[]
   requirements      Requirement[]
   calendarFeed      CalendarFeed?
+  syncBlocks        DocumentSyncBlock[]
   workingDays       Json               @default("[1,2,3,4,5]")
   holidayDates      Json               @default("[]")
   createdAt         DateTime           @default(now())
@@ -242,6 +243,7 @@ model Database {
   automations      DatabaseAutomation[]
   importJobs       DatabaseImportJob[]
   formulaErrors    FormulaEvaluationError[]
+  computedValues   DatabaseComputedValue[]
   createdAt        DateTime             @default(now())
   updatedAt        DateTime             @updatedAt
 
@@ -279,6 +281,7 @@ model DatabaseProperty {
   databaseId      String
   database        Database             @relation(fields: [databaseId], references: [id], onDelete: Cascade)
   formulaErrors   FormulaEvaluationError[]
+  computedValues  DatabaseComputedValue[]
   createdAt       DateTime             @default(now())
   updatedAt       DateTime             @updatedAt
 
@@ -340,6 +343,7 @@ model DatabaseRow {
   databaseId      String
   database        Database  @relation(fields: [databaseId], references: [id], onDelete: Cascade)
   formulaErrors   FormulaEvaluationError[]
+  computedValues  DatabaseComputedValue[]
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
 
@@ -368,6 +372,24 @@ model FormulaEvaluationError {
   @@index([databaseId, propertyId, createdAt])
   @@index([databaseId, createdAt])
   @@index([projectId, createdAt])
+}
+
+// Rollup values are refreshed by the scheduler. They are derived data and can
+// always be safely regenerated from database rows and properties.
+model DatabaseComputedValue {
+  id         String           @id @default(cuid())
+  value      String
+  databaseId String
+  propertyId String
+  rowId      String
+  computedAt DateTime         @updatedAt
+  database   Database         @relation(fields: [databaseId], references: [id], onDelete: Cascade)
+  property   DatabaseProperty @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  row        DatabaseRow      @relation(fields: [rowId], references: [id], onDelete: Cascade)
+
+  @@unique([rowId, propertyId])
+  @@index([databaseId, computedAt])
+  @@index([propertyId, computedAt])
 }
 
 model Document {
@@ -401,6 +423,7 @@ model Document {
   comments          DocumentComment[]
   revisions         DocumentRevision[]
   syncJob           DocumentSyncJob?
+  syncBlockLinks    DocumentSyncBlockLink[]
 
   @@index([projectId, parentId, position])
   @@index([projectId, deletedAt])
@@ -423,6 +446,32 @@ model DocumentSyncJob {
   document   Document           @relation(fields: [documentId], references: [id], onDelete: Cascade)
 
   @@index([createdAt])
+}
+
+// A sync block has one shared payload and at least two linked documents. Any
+// linked document may update it; the block itself is the common authority.
+model DocumentSyncBlock {
+  id        String                  @id @default(cuid())
+  content   String                  @default("")
+  projectId String
+  project   Project                 @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  links     DocumentSyncBlockLink[]
+  createdAt DateTime                @default(now())
+  updatedAt DateTime                @updatedAt
+
+  @@index([projectId, updatedAt])
+}
+
+model DocumentSyncBlockLink {
+  id        String            @id @default(cuid())
+  blockId   String
+  documentId String
+  block     DocumentSyncBlock @relation(fields: [blockId], references: [id], onDelete: Cascade)
+  document  Document          @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  createdAt DateTime          @default(now())
+
+  @@unique([blockId, documentId])
+  @@index([documentId, createdAt])
 }
 
 model DocumentTemplate {

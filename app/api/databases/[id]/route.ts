@@ -11,17 +11,29 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
   const { id } = await params;
   const access = await databaseAccess(session.user.id, id);
   if (!access) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  return NextResponse.json(
-    await prisma.database.findUnique({
-      where: { id },
-      include: {
-        properties: { where: { deletedAt: null }, orderBy: { position: "asc" } },
-        views: { orderBy: { position: "asc" } },
-        templates: { orderBy: { name: "asc" } },
-        automations: { orderBy: { createdAt: "desc" } },
+  const database = await prisma.database.findUnique({
+    where: { id },
+    include: {
+      properties: { where: { deletedAt: null }, orderBy: { position: "asc" } },
+      views: { orderBy: { position: "asc" } },
+      templates: { orderBy: { name: "asc" } },
+      automations: { orderBy: { createdAt: "desc" } },
+      computedValues: {
+        select: { rowId: true, propertyId: true, value: true, computedAt: true },
       },
-    }),
-  );
+    },
+  });
+  if (!database) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const { computedValues, ...data } = database;
+  return NextResponse.json({
+    ...data,
+    computedValues: Object.fromEntries(
+      computedValues.map((value) => [
+        `${value.rowId}:${value.propertyId}`,
+        { value: value.value, computedAt: value.computedAt },
+      ]),
+    ),
+  });
 }
 
 export async function PATCH(

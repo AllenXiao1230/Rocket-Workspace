@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { signOut } from "next-auth/react";
 import { CollaborativeEditor } from "@/components/collaborative-editor";
 import type { DatabaseData } from "@/components/database-view";
@@ -14,6 +14,8 @@ import { AiAssistant } from "@/components/ai-assistant";
 import { DocumentTemplatePicker } from "@/components/document-template-picker";
 import { MyWorkPanel, type MyTask } from "@/components/my-work-panel";
 import { VersionStatus } from "@/components/version-status";
+import { useDialogFocus } from "@/lib/use-dialog-focus";
+import { useMenuNavigation } from "@/lib/use-menu-navigation";
 
 type DocumentItem = {
   id: string;
@@ -135,6 +137,19 @@ function DocumentTree({
     x: number;
     y: number;
   } | null>(null);
+  const contextMenuTriggerRef = useRef<HTMLElement | null>(null);
+  const closeContextMenu = useCallback((restoreFocus = false) => {
+    setContextMenu(null);
+    if (restoreFocus) {
+      window.requestAnimationFrame(() => {
+        contextMenuTriggerRef.current?.focus({ preventScroll: true });
+      });
+    }
+  }, []);
+  const { menuRef: contextMenuRef, onKeyDown: onContextMenuKeyDown } = useMenuNavigation(
+    Boolean(contextMenu),
+    () => closeContextMenu(true),
+  );
   const toggle = (id: string) =>
     setCollapsed((current) => {
       const next = new Set(current);
@@ -154,6 +169,10 @@ function DocumentTree({
             draggable
             onContextMenu={(event) => {
               event.preventDefault();
+              contextMenuTriggerRef.current =
+                document.activeElement instanceof HTMLElement
+                  ? document.activeElement
+                  : null;
               setContextMenu({ id: item.id, x: event.clientX, y: event.clientY });
             }}
             onDragStart={(event) => {
@@ -221,6 +240,25 @@ function DocumentTree({
             >
               ＋
             </button>
+            <button
+              className="tree-menu-trigger"
+              type="button"
+              aria-label={`${item.title} 的更多操作`}
+              aria-haspopup="menu"
+              aria-expanded={contextMenu?.id === item.id}
+              onClick={(event) => {
+                event.stopPropagation();
+                const rect = event.currentTarget.getBoundingClientRect();
+                contextMenuTriggerRef.current = event.currentTarget;
+                setContextMenu({
+                  id: item.id,
+                  x: Math.min(rect.right + 6, window.innerWidth - 174),
+                  y: Math.min(rect.top, window.innerHeight - 92),
+                });
+              }}
+            >
+              …
+            </button>
           </div>
           {!collapsed.has(item.id) && (
             <>
@@ -246,7 +284,7 @@ function DocumentTree({
       );
     });
   return (
-    <nav className="tree" aria-label="文件樹" onClick={() => setContextMenu(null)}>
+    <nav className="tree" aria-label="文件樹" onClick={() => closeContextMenu()}>
       {render(null)}
       {hasMore && (
         <button className="tree-load-more" type="button" onClick={onLoadMore}>
@@ -255,25 +293,30 @@ function DocumentTree({
       )}
       {contextMenu && (
         <div
+          ref={contextMenuRef}
           className="tree-context-menu"
           role="menu"
+          aria-label="文件操作"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(event) => event.stopPropagation()}
+          onKeyDown={onContextMenuKeyDown}
         >
           <button
+            role="menuitem"
             onClick={() => {
               onDuplicate(contextMenu.id);
-              setContextMenu(null);
+              closeContextMenu(true);
             }}
           >
             ⧉ 複製文件
           </button>
           <button
+            role="menuitem"
             className="danger"
             onClick={() => {
               const document = documents.find((item) => item.id === contextMenu.id);
               if (document) onDelete(contextMenu.id);
-              setContextMenu(null);
+              closeContextMenu(true);
             }}
           >
             ⌫ 刪除文件
@@ -950,6 +993,10 @@ export function WorkspaceShell({
               )
             }
             onDelete={() => requestDeleteDocument(active.id)}
+            documentChoices={documents.map((document) => ({
+              id: document.id,
+              title: document.title,
+            }))}
           />
         ) : active ? (
           <section className="document">
@@ -1092,13 +1139,16 @@ export function WorkspaceShell({
 function AppDialogView({ dialog, onClose }: { dialog: AppDialog; onClose: () => void }) {
   const [value, setValue] = useState(dialog.initialValue || "");
   const needsValue = dialog.onConfirm && dialog.initialValue !== undefined;
+  const dialogRef = useDialogFocus<HTMLElement>(true, onClose);
   return (
     <div className="app-dialog-backdrop" role="presentation" onMouseDown={onClose}>
       <section
+        ref={dialogRef}
         className="app-dialog"
         role="dialog"
         aria-modal="true"
         aria-labelledby="app-dialog-title"
+        tabIndex={-1}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <p className="eyebrow">Rocket Workspace</p>
@@ -1108,6 +1158,7 @@ function AppDialogView({ dialog, onClose }: { dialog: AppDialog; onClose: () => 
           <label>
             名稱
             <input
+              data-dialog-initial-focus
               autoFocus
               value={value}
               onChange={(event) => setValue(event.target.value)}

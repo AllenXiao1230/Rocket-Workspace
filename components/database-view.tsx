@@ -87,6 +87,7 @@ export type DatabaseData = {
   views: DatabaseViewData[];
   templates: DatabaseTemplate[];
   automations: DatabaseAutomation[];
+  computedValues?: Record<string, { value: string; computedAt: string | Date }>;
 };
 type PendingDatabaseAction =
   | { kind: "rollback-import" }
@@ -206,6 +207,7 @@ function calculatedValue(
   row: DatabaseRow,
   property: DatabaseProperty,
   all: DatabaseData[],
+  computedValues: DatabaseData["computedValues"] = {},
 ) {
   if (property.type === "UNIQUE_ID") return row.id.slice(-6).toUpperCase();
   if (property.type === "CREATED_TIME") return new Date(row.createdAt).toLocaleString();
@@ -225,6 +227,8 @@ function calculatedValue(
       .join(", ");
   }
   if (property.type === "ROLLUP") {
+    const cached = computedValues?.[`${row.id}:${property.id}`];
+    if (cached) return cached.value;
     const config = objectOptions(property);
     const database = all.find((item) => item.id === config.databaseId);
     const ids = stringArray(row.values[String(config.relationPropertyId)]);
@@ -272,7 +276,9 @@ function matchesFilter(
     );
   if (!filter.propertyId || !filter.operator) return true;
   const property = database.properties.find((item) => item.id === filter.propertyId);
-  const raw = property ? calculatedValue(row, property, all) : "";
+  const raw = property
+    ? calculatedValue(row, property, all, database.computedValues)
+    : "";
   const value = raw.toLowerCase();
   const expected = (filter.value || "").toLowerCase();
   if (filter.operator === "is_empty") return !value;
@@ -565,8 +571,13 @@ export function DatabaseTable({
               (candidate) => candidate.id === item.propertyId,
             );
             const compare = property
-              ? calculatedValue(a, property, allDatabases).localeCompare(
-                  calculatedValue(b, property, allDatabases),
+              ? calculatedValue(
+                  a,
+                  property,
+                  allDatabases,
+                  database.computedValues,
+                ).localeCompare(
+                  calculatedValue(b, property, allDatabases, database.computedValues),
                   undefined,
                   { numeric: true },
                 )
@@ -674,7 +685,9 @@ export function DatabaseTable({
   }
   function exportCsv() {
     const source = rows.map((row) =>
-      database.properties.map((property) => calculatedValue(row, property, allDatabases)),
+      database.properties.map((property) =>
+        calculatedValue(row, property, allDatabases, database.computedValues),
+      ),
     );
     const blob = new Blob(
       [
@@ -1342,7 +1355,7 @@ export function DatabaseTable({
     )
       return (
         <span className="db-derived">
-          {calculatedValue(row, property, allDatabases) || "—"}
+          {calculatedValue(row, property, allDatabases, database.computedValues) || "—"}
         </span>
       );
     if (property.type === "RELATION") {
@@ -1583,7 +1596,7 @@ export function DatabaseTable({
                       .slice(0, 3)
                       .map(
                         (property) =>
-                          `${property.name}: ${calculatedValue(row, property, allDatabases)}`,
+                          `${property.name}: ${calculatedValue(row, property, allDatabases, database.computedValues)}`,
                       )
                       .join(" · ")}
                   </small>
@@ -1625,7 +1638,8 @@ export function DatabaseTable({
             {database.properties.slice(1, 5).map((property) => (
               <p key={property.id}>
                 <span>{property.name}</span>
-                {calculatedValue(row, property, allDatabases) || "—"}
+                {calculatedValue(row, property, allDatabases, database.computedValues) ||
+                  "—"}
               </p>
             ))}
           </article>
@@ -1642,7 +1656,9 @@ export function DatabaseTable({
             <small>
               {database.properties
                 .slice(1, 3)
-                .map((property) => calculatedValue(row, property, allDatabases))
+                .map((property) =>
+                  calculatedValue(row, property, allDatabases, database.computedValues),
+                )
                 .join(" · ")}
             </small>
           </article>

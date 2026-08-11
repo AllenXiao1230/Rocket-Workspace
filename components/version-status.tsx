@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useDialogFocus } from "@/lib/use-dialog-focus";
 
 type VersionState = {
   version: string;
@@ -23,6 +24,7 @@ type VersionState = {
 export function VersionStatus() {
   const [status, setStatus] = useState<VersionState | null>(null);
   const [open, setOpen] = useState(false);
+  const dialogRef = useDialogFocus<HTMLElement>(open, () => setOpen(false));
   useEffect(() => {
     void fetch("/api/version", { cache: "no-store" })
       .then((response) => (response.ok ? response.json() : null))
@@ -62,10 +64,12 @@ export function VersionStatus() {
           onMouseDown={() => setOpen(false)}
         >
           <section
+            ref={dialogRef}
             className="app-dialog"
             role="dialog"
             aria-modal="true"
             aria-labelledby="version-dialog-title"
+            tabIndex={-1}
             onMouseDown={(event) => event.stopPropagation()}
           >
             <p className="eyebrow">系統版本</p>

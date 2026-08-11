@@ -22,8 +22,11 @@ import { IndexeddbPersistence } from "y-indexeddb";
 import { DocumentCollaborationPanel } from "@/components/document-collaboration-panel";
 import { DocumentAttachments } from "@/components/document-attachments";
 import { DocumentWorkflowPanel } from "@/components/document-workflow-panel";
+import { DocumentSyncBlocks } from "@/components/document-sync-blocks";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { FormDialog } from "@/components/form-dialog";
+import { useDialogFocus } from "@/lib/use-dialog-focus";
+import { useMenuNavigation } from "@/lib/use-menu-navigation";
 import { mergeMarkdown } from "@/lib/markdown-conflict";
 import { Callout, isSafeDocumentEmbedUrl, SecureEmbed } from "@/lib/editor-extensions";
 
@@ -67,6 +70,7 @@ export function CollaborativeEditor({
   onCreateDatabase,
   onIconChange,
   onDelete,
+  documentChoices,
 }: {
   projectId: string;
   document: DocumentData;
@@ -76,6 +80,7 @@ export function CollaborativeEditor({
   onCreateDatabase?: (parentId: string) => void;
   onIconChange?: (icon: string) => void;
   onDelete?: () => void;
+  documentChoices?: Array<{ id: string; title: string }>;
 }) {
   const collaborationRoom = document.id.startsWith("notion-")
     ? `document-${document.id}-notion-markdown-v2`
@@ -259,6 +264,7 @@ export function CollaborativeEditor({
           contextmenu: (view, event) => {
             if (!editable) return false;
             event.preventDefault();
+            setSlashMenu(false);
             const $from = view.state.selection.$from;
             setContextMenu({
               x: event.clientX,
@@ -357,6 +363,20 @@ export function CollaborativeEditor({
     },
     [activeProvider],
   );
+  const closeFloatingMenus = useCallback(() => {
+    setSlashMenu(false);
+    setContextMenu(null);
+    editor?.commands.focus();
+  }, [editor]);
+  const iconPickerDialogRef = useDialogFocus<HTMLElement>(iconPicker, () =>
+    setIconPicker(false),
+  );
+  const { menuRef: slashMenuRef, onKeyDown: onSlashMenuKeyDown } = useMenuNavigation(
+    slashMenu,
+    closeFloatingMenus,
+  );
+  const { menuRef: editorContextMenuRef, onKeyDown: onEditorContextMenuKeyDown } =
+    useMenuNavigation(Boolean(contextMenu), closeFloatingMenus);
   useEffect(() => {
     editorRef.current = editor;
   }, [editor]);
@@ -628,10 +648,6 @@ export function CollaborativeEditor({
   const command = (run: () => boolean) => () => {
     if (editable) run();
   };
-  const closeFloatingMenus = () => {
-    setSlashMenu(false);
-    setContextMenu(null);
-  };
   const menuAction = (run: () => void) => () => {
     run();
     closeFloatingMenus();
@@ -668,7 +684,7 @@ export function CollaborativeEditor({
     else if (action === "splitCell") chain.splitCell().run();
     else if (action === "toggleHeaderRow") chain.toggleHeaderRow().run();
     else chain.deleteTable().run();
-    setContextMenu(null);
+    closeFloatingMenus();
   }
   function insertBlock(
     kind:
@@ -729,10 +745,12 @@ export function CollaborativeEditor({
           onMouseDown={() => setIconPicker(false)}
         >
           <section
+            ref={iconPickerDialogRef}
             className="emoji-picker"
             role="dialog"
             aria-modal="true"
             aria-label="選擇頁面圖標"
+            tabIndex={-1}
             onMouseDown={(event) => event.stopPropagation()}
           >
             <header>
@@ -982,26 +1000,50 @@ export function CollaborativeEditor({
       />
       {slashMenu && (
         <div
+          ref={slashMenuRef}
           className="slash-menu floating-menu"
           style={{ left: slashPosition.x, top: slashPosition.y }}
           role="menu"
           aria-label="新增內容區塊"
+          onKeyDown={onSlashMenuKeyDown}
         >
           <p>
             插入區塊 <kbd>Esc</kbd> 關閉
           </p>
           <div>
-            <button onClick={() => insertBlock("paragraph")}>¶ 文字</button>
-            <button onClick={() => insertBlock("heading")}>H 標題</button>
-            <button onClick={() => insertBlock("task")}>☑ 待辦清單</button>
-            <button onClick={() => insertBlock("quote")}>❝ 提示區塊</button>
-            <button onClick={() => insertBlock("callout")}>ⓘ Callout</button>
-            <button onClick={() => insertBlock("uploadImage")}>⇧ 上傳圖片</button>
-            <button onClick={() => insertBlock("image")}>▧ 圖片網址</button>
-            <button onClick={() => insertBlock("embed")}>▣ 嵌入內容</button>
-            <button onClick={() => insertBlock("table")}>▦ 表格</button>
-            <button onClick={() => insertBlock("code")}>{"</>"} 程式碼</button>
-            <button onClick={() => insertBlock("divider")}>— 分隔線</button>
+            <button role="menuitem" onClick={() => insertBlock("paragraph")}>
+              ¶ 文字
+            </button>
+            <button role="menuitem" onClick={() => insertBlock("heading")}>
+              H 標題
+            </button>
+            <button role="menuitem" onClick={() => insertBlock("task")}>
+              ☑ 待辦清單
+            </button>
+            <button role="menuitem" onClick={() => insertBlock("quote")}>
+              ❝ 提示區塊
+            </button>
+            <button role="menuitem" onClick={() => insertBlock("callout")}>
+              ⓘ Callout
+            </button>
+            <button role="menuitem" onClick={() => insertBlock("uploadImage")}>
+              ⇧ 上傳圖片
+            </button>
+            <button role="menuitem" onClick={() => insertBlock("image")}>
+              ▧ 圖片網址
+            </button>
+            <button role="menuitem" onClick={() => insertBlock("embed")}>
+              ▣ 嵌入內容
+            </button>
+            <button role="menuitem" onClick={() => insertBlock("table")}>
+              ▦ 表格
+            </button>
+            <button role="menuitem" onClick={() => insertBlock("code")}>
+              {"</>"} 程式碼
+            </button>
+            <button role="menuitem" onClick={() => insertBlock("divider")}>
+              — 分隔線
+            </button>
           </div>
         </div>
       )}
@@ -1070,19 +1112,33 @@ export function CollaborativeEditor({
       )}
       {contextMenu && (
         <div
+          ref={editorContextMenuRef}
           className="editor-context-menu floating-menu"
           role="menu"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onMouseDown={(event) => event.preventDefault()}
+          onKeyDown={onEditorContextMenuKeyDown}
         >
           {contextMenu.kind === "table" ? (
             <>
               <strong>表格</strong>
-              <button onClick={() => tableAction("addRowAfter")}>新增下一列</button>
-              <button onClick={() => tableAction("addColumnAfter")}>新增右側欄</button>
-              <button onClick={() => tableAction("mergeCells")}>合併儲存格</button>
-              <button onClick={() => tableAction("deleteRow")}>刪除此列</button>
-              <button className="danger" onClick={() => tableAction("deleteTable")}>
+              <button role="menuitem" onClick={() => tableAction("addRowAfter")}>
+                新增下一列
+              </button>
+              <button role="menuitem" onClick={() => tableAction("addColumnAfter")}>
+                新增右側欄
+              </button>
+              <button role="menuitem" onClick={() => tableAction("mergeCells")}>
+                合併儲存格
+              </button>
+              <button role="menuitem" onClick={() => tableAction("deleteRow")}>
+                刪除此列
+              </button>
+              <button
+                role="menuitem"
+                className="danger"
+                onClick={() => tableAction("deleteTable")}
+              >
                 刪除表格
               </button>
             </>
@@ -1090,6 +1146,7 @@ export function CollaborativeEditor({
             <>
               <strong>已選取文字</strong>
               <button
+                role="menuitem"
                 onClick={menuAction(() => {
                   editor?.chain().focus().toggleBold().run();
                 })}
@@ -1097,6 +1154,7 @@ export function CollaborativeEditor({
                 粗體
               </button>
               <button
+                role="menuitem"
                 onClick={menuAction(() => {
                   editor?.chain().focus().toggleItalic().run();
                 })}
@@ -1104,16 +1162,21 @@ export function CollaborativeEditor({
                 斜體
               </button>
               <button
+                role="menuitem"
                 onClick={menuAction(() => {
                   editor?.chain().focus().toggleUnderline().run();
                 })}
               >
                 底線
               </button>
-              <button onClick={menuAction(() => openInsertDialog("link"))}>
+              <button
+                role="menuitem"
+                onClick={menuAction(() => openInsertDialog("link"))}
+              >
                 加入連結
               </button>
               <button
+                role="menuitem"
                 onClick={menuAction(() => {
                   editor?.chain().focus().unsetAllMarks().run();
                 })}
@@ -1124,17 +1187,26 @@ export function CollaborativeEditor({
           ) : (
             <>
               <strong>目前區塊</strong>
-              <button onClick={menuAction(() => insertBlock("heading"))}>轉為標題</button>
+              <button role="menuitem" onClick={menuAction(() => insertBlock("heading"))}>
+                轉為標題
+              </button>
               <button
+                role="menuitem"
                 onClick={menuAction(() => {
                   editor?.chain().focus().toggleBulletList().run();
                 })}
               >
                 轉為清單
               </button>
-              <button onClick={menuAction(() => insertBlock("task"))}>轉為待辦</button>
-              <button onClick={menuAction(() => insertBlock("quote"))}>轉為提示</button>
-              <button onClick={menuAction(() => insertBlock("table"))}>插入表格</button>
+              <button role="menuitem" onClick={menuAction(() => insertBlock("task"))}>
+                轉為待辦
+              </button>
+              <button role="menuitem" onClick={menuAction(() => insertBlock("quote"))}>
+                轉為提示
+              </button>
+              <button role="menuitem" onClick={menuAction(() => insertBlock("table"))}>
+                插入表格
+              </button>
             </>
           )}
         </div>
@@ -1212,6 +1284,11 @@ export function CollaborativeEditor({
         documentId={document.id}
         projectId={projectId}
         canWrite={editable}
+      />
+      <DocumentSyncBlocks
+        documentId={document.id}
+        editable={editable}
+        documents={documentChoices || []}
       />
       <DocumentCollaborationPanel documentId={document.id} canWrite={editable} />
       <DocumentAttachments
