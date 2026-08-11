@@ -36,16 +36,13 @@ fi
 for service in app collab scheduler backup; do
   docker compose build "$service"
 done
-docker compose up -d app collab scheduler backup
+docker compose up --detach --wait --wait-timeout 240 app collab scheduler backup
 
-for _attempt in $(seq 1 20); do
-  if curl --fail --silent --show-error http://127.0.0.1:3000/api/health; then
-    echo
-    echo "Deployment complete: $(git rev-parse --short HEAD)"
-    exit 0
-  fi
-  sleep 3
-done
+if curl --fail --silent --show-error http://127.0.0.1:3000/api/health; then
+  echo
+  echo "Deployment complete: $(git rev-parse --short HEAD)"
+  exit 0
+fi
 
 echo "Deployment finished, but the application health endpoint did not become ready." >&2
 docker compose ps app
