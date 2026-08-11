@@ -3,112 +3,2592 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { evaluateFormula } from "@/lib/formula";
 import { parseCsv, toCsv } from "@/lib/csv";
+import { ConfirmDialog } from "@/components/confirm-dialog";
 
-export type DatabasePropertyType = "TEXT" | "NUMBER" | "SELECT" | "MULTI_SELECT" | "STATUS" | "DATE" | "PERSON" | "FILES" | "CHECKBOX" | "URL" | "EMAIL" | "PHONE" | "RELATION" | "ROLLUP" | "FORMULA" | "UNIQUE_ID" | "CREATED_TIME" | "UPDATED_TIME";
-export type DatabaseProperty = { id: string; name: string; type: DatabasePropertyType; options: unknown; position: number };
-export type DatabaseRow = { id: string; values: Record<string, unknown>; position: number; createdAt: string | Date; updatedAt: string | Date };
-export type DatabaseViewLayout = "TABLE" | "BOARD" | "CALENDAR" | "TIMELINE" | "GALLERY" | "LIST" | "FORM";
-export type DatabaseViewData = { id: string; name: string; layout: DatabaseViewLayout; config: Record<string, unknown> | null; filter: Record<string, unknown> | null; sort: Record<string, unknown> | null; position: number };
-export type DatabaseTemplate = { id: string; name: string; values: Record<string, unknown> };
-export type DatabaseAutomation = { id: string; name: string; trigger: string; action: string; config: Record<string, unknown>; enabled: boolean };
-export type DatabaseData = { id: string; name: string; icon: string; parentDocumentId: string | null; properties: DatabaseProperty[]; rows: DatabaseRow[]; views: DatabaseViewData[]; templates: DatabaseTemplate[]; automations: DatabaseAutomation[] };
+export type DatabasePropertyType =
+  | "TEXT"
+  | "NUMBER"
+  | "SELECT"
+  | "MULTI_SELECT"
+  | "STATUS"
+  | "DATE"
+  | "PERSON"
+  | "FILES"
+  | "CHECKBOX"
+  | "URL"
+  | "EMAIL"
+  | "PHONE"
+  | "RELATION"
+  | "ROLLUP"
+  | "FORMULA"
+  | "UNIQUE_ID"
+  | "CREATED_TIME"
+  | "UPDATED_TIME";
+export type DatabaseProperty = {
+  id: string;
+  name: string;
+  type: DatabasePropertyType;
+  options: unknown;
+  position: number;
+};
+export type DatabaseRow = {
+  id: string;
+  values: Record<string, unknown>;
+  position: number;
+  createdAt: string | Date;
+  updatedAt: string | Date;
+};
+export type DatabaseViewLayout =
+  | "TABLE"
+  | "BOARD"
+  | "CALENDAR"
+  | "TIMELINE"
+  | "GALLERY"
+  | "LIST"
+  | "FORM";
+export type DatabaseViewData = {
+  id: string;
+  name: string;
+  layout: DatabaseViewLayout;
+  config: Record<string, unknown> | null;
+  filter: Record<string, unknown> | null;
+  sort: Record<string, unknown> | null;
+  position: number;
+};
+export type DatabaseTemplate = {
+  id: string;
+  name: string;
+  values: Record<string, unknown>;
+};
+export type DatabaseAutomation = {
+  id: string;
+  name: string;
+  trigger: string;
+  action: string;
+  config: Record<string, unknown>;
+  enabled: boolean;
+};
+export type DatabaseData = {
+  id: string;
+  name: string;
+  icon: string;
+  parentDocumentId: string | null;
+  properties: DatabaseProperty[];
+  rows: DatabaseRow[];
+  views: DatabaseViewData[];
+  templates: DatabaseTemplate[];
+  automations: DatabaseAutomation[];
+};
+type PendingDatabaseAction =
+  | { kind: "rollback-import" }
+  | { kind: "row"; row: DatabaseRow }
+  | { kind: "property"; property: DatabaseProperty }
+  | { kind: "view"; view: DatabaseViewData }
+  | { kind: "database" }
+  | { kind: "template"; template: DatabaseTemplate }
+  | { kind: "automation"; automation: DatabaseAutomation };
 
-type Filter = { propertyId?: string; operator?: "contains" | "not_contains" | "equals" | "not_equals" | "is_empty" | "is_not_empty" | "greater_than" | "less_than" | "on_or_after" | "on_or_before"; value?: string };
+type Filter = {
+  propertyId?: string;
+  operator?:
+    | "contains"
+    | "not_contains"
+    | "equals"
+    | "not_equals"
+    | "is_empty"
+    | "is_not_empty"
+    | "greater_than"
+    | "less_than"
+    | "on_or_after"
+    | "on_or_before";
+  value?: string;
+};
 type FilterNode = Filter & { logic?: "AND" | "OR"; filters?: FilterNode[] };
 type Sort = { propertyId?: string; direction?: "asc" | "desc" };
-const labels: Record<DatabasePropertyType, string> = { TEXT:"文字", NUMBER:"數字", SELECT:"選擇", MULTI_SELECT:"多重選擇", STATUS:"狀態", DATE:"日期", PERSON:"人員", FILES:"檔案", CHECKBOX:"核取方塊", URL:"網址", EMAIL:"電子郵件", PHONE:"電話", RELATION:"關聯", ROLLUP:"彙總", FORMULA:"公式", UNIQUE_ID:"識別碼", CREATED_TIME:"建立時間", UPDATED_TIME:"最後編輯時間" };
-const layouts: DatabaseViewLayout[] = ["TABLE", "BOARD", "CALENDAR", "TIMELINE", "GALLERY", "LIST", "FORM"];
-const text = (value: unknown) => value === null || value === undefined ? "" : Array.isArray(value) ? value.join(", ") : String(value);
-const stringArray = (value: unknown): string[] => Array.isArray(value) ? value.map(String) : [];
-const optionsFor = (property: DatabaseProperty) => Array.isArray(property.options) ? property.options.map(String) : Array.isArray(objectOptions(property).choices) ? (objectOptions(property).choices as unknown[]).map(String) : property.type === "STATUS" ? ["未開始", "進行中", "已完成"] : [];
-const objectOptions = (property: DatabaseProperty) => property.options && typeof property.options === "object" && !Array.isArray(property.options) ? property.options as Record<string, unknown> : {};
-const filterOperators: Array<[NonNullable<Filter["operator"]>, string]> = [["contains", "包含"], ["not_contains", "不包含"], ["equals", "等於"], ["not_equals", "不等於"], ["is_empty", "為空白"], ["is_not_empty", "不為空白"], ["greater_than", "大於（數字）"], ["less_than", "小於（數字）"], ["on_or_after", "日期晚於或等於"], ["on_or_before", "日期早於或等於"]];
-const isGroup = (filter: FilterNode): filter is FilterNode & { logic: "AND" | "OR"; filters: FilterNode[] } => Array.isArray(filter.filters);
+const labels: Record<DatabasePropertyType, string> = {
+  TEXT: "文字",
+  NUMBER: "數字",
+  SELECT: "選擇",
+  MULTI_SELECT: "多重選擇",
+  STATUS: "狀態",
+  DATE: "日期",
+  PERSON: "人員",
+  FILES: "檔案",
+  CHECKBOX: "核取方塊",
+  URL: "網址",
+  EMAIL: "電子郵件",
+  PHONE: "電話",
+  RELATION: "關聯",
+  ROLLUP: "彙總",
+  FORMULA: "公式",
+  UNIQUE_ID: "識別碼",
+  CREATED_TIME: "建立時間",
+  UPDATED_TIME: "最後編輯時間",
+};
+const layouts: DatabaseViewLayout[] = [
+  "TABLE",
+  "BOARD",
+  "CALENDAR",
+  "TIMELINE",
+  "GALLERY",
+  "LIST",
+  "FORM",
+];
+const text = (value: unknown) =>
+  value === null || value === undefined
+    ? ""
+    : Array.isArray(value)
+      ? value.join(", ")
+      : String(value);
+const stringArray = (value: unknown): string[] =>
+  Array.isArray(value) ? value.map(String) : [];
+const optionsFor = (property: DatabaseProperty) =>
+  Array.isArray(property.options)
+    ? property.options.map(String)
+    : Array.isArray(objectOptions(property).choices)
+      ? (objectOptions(property).choices as unknown[]).map(String)
+      : property.type === "STATUS"
+        ? ["未開始", "進行中", "已完成"]
+        : [];
+const objectOptions = (property: DatabaseProperty) =>
+  property.options &&
+  typeof property.options === "object" &&
+  !Array.isArray(property.options)
+    ? (property.options as Record<string, unknown>)
+    : {};
+const filterOperators: Array<[NonNullable<Filter["operator"]>, string]> = [
+  ["contains", "包含"],
+  ["not_contains", "不包含"],
+  ["equals", "等於"],
+  ["not_equals", "不等於"],
+  ["is_empty", "為空白"],
+  ["is_not_empty", "不為空白"],
+  ["greater_than", "大於（數字）"],
+  ["less_than", "小於（數字）"],
+  ["on_or_after", "日期晚於或等於"],
+  ["on_or_before", "日期早於或等於"],
+];
+const isGroup = (
+  filter: FilterNode,
+): filter is FilterNode & { logic: "AND" | "OR"; filters: FilterNode[] } =>
+  Array.isArray(filter.filters);
 
-function calculatedValue(row: DatabaseRow, property: DatabaseProperty, all: DatabaseData[]) {
+function calculatedValue(
+  row: DatabaseRow,
+  property: DatabaseProperty,
+  all: DatabaseData[],
+) {
   if (property.type === "UNIQUE_ID") return row.id.slice(-6).toUpperCase();
-  if (property.type === "CREATED_TIME") return new Date(row.createdAt).toLocaleString();
-  if (property.type === "UPDATED_TIME") return new Date(row.updatedAt).toLocaleString();
-  if (property.type === "RELATION") { const database = all.find((item) => item.id === objectOptions(property).databaseId); const ids = stringArray(row.values[property.id]); return ids.map((id) => text(database?.rows.find((item) => item.id === id)?.values[database?.properties[0]?.id || ""])).filter(Boolean).join(", "); }
-  if (property.type === "ROLLUP") { const config = objectOptions(property); const database = all.find((item) => item.id === config.databaseId); const ids = stringArray(row.values[String(config.relationPropertyId)]); const values: unknown[] = ids.map((id) => database?.rows.find((item) => item.id === id)?.values[String(config.targetPropertyId)]).filter((value): value is NonNullable<typeof value> => value !== undefined); if (config.operation === "COUNT") return String(values.length); if (config.operation === "SUM") return String(values.reduce((sum: number, value) => sum + (Number(value) || 0), 0)); return values.map(text).join(", "); }
-  if (property.type === "FORMULA") { const expression = String(objectOptions(property).expression || ""); const database = all.find((item) => item.properties.some((candidate) => candidate.id === property.id)); return evaluateFormula(expression, (name) => row.values[database?.properties.find((item) => item.name === name)?.id || ""]) || "公式錯誤"; }
+  if (property.type === "CREATED_TIME")
+    return new Date(row.createdAt).toLocaleString();
+  if (property.type === "UPDATED_TIME")
+    return new Date(row.updatedAt).toLocaleString();
+  if (property.type === "RELATION") {
+    const database = all.find(
+      (item) => item.id === objectOptions(property).databaseId,
+    );
+    const ids = stringArray(row.values[property.id]);
+    return ids
+      .map((id) =>
+        text(
+          database?.rows.find((item) => item.id === id)?.values[
+            database?.properties[0]?.id || ""
+          ],
+        ),
+      )
+      .filter(Boolean)
+      .join(", ");
+  }
+  if (property.type === "ROLLUP") {
+    const config = objectOptions(property);
+    const database = all.find((item) => item.id === config.databaseId);
+    const ids = stringArray(row.values[String(config.relationPropertyId)]);
+    const values: unknown[] = ids
+      .map(
+        (id) =>
+          database?.rows.find((item) => item.id === id)?.values[
+            String(config.targetPropertyId)
+          ],
+      )
+      .filter(
+        (value): value is NonNullable<typeof value> => value !== undefined,
+      );
+    if (config.operation === "COUNT") return String(values.length);
+    if (config.operation === "SUM")
+      return String(
+        values.reduce((sum: number, value) => sum + (Number(value) || 0), 0),
+      );
+    return values.map(text).join(", ");
+  }
+  if (property.type === "FORMULA") {
+    const expression = String(objectOptions(property).expression || "");
+    const database = all.find((item) =>
+      item.properties.some((candidate) => candidate.id === property.id),
+    );
+    return (
+      evaluateFormula(
+        expression,
+        (name) =>
+          row.values[
+            database?.properties.find((item) => item.name === name)?.id || ""
+          ],
+      ) || "公式錯誤"
+    );
+  }
   return text(row.values[property.id]);
 }
 
-function matchesFilter(row: DatabaseRow, filter: FilterNode, database: DatabaseData, all: DatabaseData[]): boolean {
-  if (isGroup(filter)) return filter.filters.length === 0 || (filter.logic === "AND" ? filter.filters.every((child) => matchesFilter(row, child, database, all)) : filter.filters.some((child) => matchesFilter(row, child, database, all)));
-  if (!filter.propertyId || !filter.operator) return true; const property = database.properties.find((item) => item.id === filter.propertyId); const raw = property ? calculatedValue(row, property, all) : ""; const value = raw.toLowerCase(); const expected = (filter.value || "").toLowerCase();
-  if (filter.operator === "is_empty") return !value; if (filter.operator === "is_not_empty") return Boolean(value); if (filter.operator === "contains") return value.includes(expected); if (filter.operator === "not_contains") return !value.includes(expected); if (filter.operator === "equals") return value === expected; if (filter.operator === "not_equals") return value !== expected;
-  if (filter.operator === "greater_than" || filter.operator === "less_than") { const left = Number(raw); const right = Number(filter.value); return Number.isFinite(left) && Number.isFinite(right) && (filter.operator === "greater_than" ? left > right : left < right); }
-  const left = new Date(raw).getTime(); const right = new Date(filter.value || "").getTime(); return Number.isFinite(left) && Number.isFinite(right) && (filter.operator === "on_or_after" ? left >= right : left <= right);
+function matchesFilter(
+  row: DatabaseRow,
+  filter: FilterNode,
+  database: DatabaseData,
+  all: DatabaseData[],
+): boolean {
+  if (isGroup(filter))
+    return (
+      filter.filters.length === 0 ||
+      (filter.logic === "AND"
+        ? filter.filters.every((child) =>
+            matchesFilter(row, child, database, all),
+          )
+        : filter.filters.some((child) =>
+            matchesFilter(row, child, database, all),
+          ))
+    );
+  if (!filter.propertyId || !filter.operator) return true;
+  const property = database.properties.find(
+    (item) => item.id === filter.propertyId,
+  );
+  const raw = property ? calculatedValue(row, property, all) : "";
+  const value = raw.toLowerCase();
+  const expected = (filter.value || "").toLowerCase();
+  if (filter.operator === "is_empty") return !value;
+  if (filter.operator === "is_not_empty") return Boolean(value);
+  if (filter.operator === "contains") return value.includes(expected);
+  if (filter.operator === "not_contains") return !value.includes(expected);
+  if (filter.operator === "equals") return value === expected;
+  if (filter.operator === "not_equals") return value !== expected;
+  if (filter.operator === "greater_than" || filter.operator === "less_than") {
+    const left = Number(raw);
+    const right = Number(filter.value);
+    return (
+      Number.isFinite(left) &&
+      Number.isFinite(right) &&
+      (filter.operator === "greater_than" ? left > right : left < right)
+    );
+  }
+  const left = new Date(raw).getTime();
+  const right = new Date(filter.value || "").getTime();
+  return (
+    Number.isFinite(left) &&
+    Number.isFinite(right) &&
+    (filter.operator === "on_or_after" ? left >= right : left <= right)
+  );
 }
 
-function FilterBuilder({ node, properties, onChange, onRemove }: { node: FilterNode; properties: DatabaseProperty[]; onChange: (next: FilterNode) => void; onRemove?: () => void }) {
-  if (isGroup(node)) return <div className="db-filter-group"><div><select value={node.logic} onChange={(event) => onChange({ ...node, logic: event.target.value as "AND" | "OR" })}><option value="AND">符合全部（AND）</option><option value="OR">符合任一（OR）</option></select><button type="button" onClick={() => onChange({ ...node, filters: [...node.filters, {}] })}>＋ 條件</button><button type="button" onClick={() => onChange({ ...node, filters: [...node.filters, { logic: "AND", filters: [{}] }] })}>＋ 群組</button>{onRemove && <button type="button" onClick={onRemove}>移除群組</button>}</div>{node.filters.map((child, index) => <FilterBuilder key={index} node={child} properties={properties} onChange={(next) => onChange({ ...node, filters: node.filters.map((item, itemIndex) => itemIndex === index ? next : item) })} onRemove={() => onChange({ ...node, filters: node.filters.filter((_, itemIndex) => itemIndex !== index) })} />)}</div>;
-  const dateOperator = node.operator === "on_or_after" || node.operator === "on_or_before"; const numberOperator = node.operator === "greater_than" || node.operator === "less_than";
-  return <div className="db-filter-condition"><select value={node.propertyId || ""} onChange={(event) => onChange({ ...node, propertyId: event.target.value || undefined, operator: node.operator || "contains" })}><option value="">選擇欄位</option>{properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select><select value={node.operator || "contains"} onChange={(event) => onChange({ ...node, operator: event.target.value as Filter["operator"] })}>{filterOperators.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>{node.operator !== "is_empty" && node.operator !== "is_not_empty" && <input type={dateOperator ? "date" : numberOperator ? "number" : "text"} value={node.value || ""} onChange={(event) => onChange({ ...node, value: event.target.value })} placeholder="值" />}{onRemove && <button type="button" onClick={onRemove}>×</button>}</div>;
-}
-
-export function DatabaseTable({ database, allDatabases, editable, onChange, onDelete }: { database: DatabaseData; allDatabases: DatabaseData[]; editable: boolean; onChange: (database: DatabaseData) => void; onDelete: (id: string) => void }) {
-  const [activeId, setActiveId] = useState(database.views[0]?.id || ""); const activeView = database.views.find((view) => view.id === activeId) || database.views[0];
-  const [filter, setFilter] = useState<FilterNode>((activeView?.filter || {}) as FilterNode); const [sort, setSort] = useState<Sort>((activeView?.sort || {}) as Sort); const [sorts, setSorts] = useState<Sort[]>([]); const [viewConfig, setViewConfig] = useState<Record<string, unknown>>((activeView?.config || {}) as Record<string, unknown>); const [controls, setControls] = useState(false); const [notice, setNotice] = useState(""); const [formValues, setFormValues] = useState<Record<string, unknown>>({}); const [showColumnComposer, setShowColumnComposer] = useState(false); const [propertyName, setPropertyName] = useState(""); const [propertyType, setPropertyType] = useState<DatabasePropertyType>("TEXT"); const [propertyOptions, setPropertyOptions] = useState(""); const [propertyDescription, setPropertyDescription] = useState(""); const [propertyPlaceholder, setPropertyPlaceholder] = useState(""); const [propertyMaxLength, setPropertyMaxLength] = useState(""); const [numberFormat, setNumberFormat] = useState("number"); const [numberPrecision, setNumberPrecision] = useState("0"); const [numberCurrency, setNumberCurrency] = useState("TWD"); const [dateIncludeTime, setDateIncludeTime] = useState(false); const [allowCustomChoice, setAllowCustomChoice] = useState(false); const [personMultiple, setPersonMultiple] = useState(false); const [fileLimit, setFileLimit] = useState("10"); const [relatedDatabaseId, setRelatedDatabaseId] = useState(""); const [rollupRelationId, setRollupRelationId] = useState(""); const [rollupTargetPropertyId, setRollupTargetPropertyId] = useState(""); const [rollupOperation, setRollupOperation] = useState("SHOW_ORIGINAL"); const [draggedPropertyId, setDraggedPropertyId] = useState<string | null>(null); const [draggedRowId, setDraggedRowId] = useState<string | null>(null); const [showRowTrash, setShowRowTrash] = useState(false); const [trashedRows, setTrashedRows] = useState<Array<{ id: string; values: Record<string, unknown>; deletedAt: string; deletionBatchId: string | null }>>([]); const [showPropertyTrash, setShowPropertyTrash] = useState(false); const [trashedProperties, setTrashedProperties] = useState<Array<{ id: string; name: string; deletedAt: string; deletionBatchId: string | null }>>([]); const [nextRowCursor, setNextRowCursor] = useState<string | null>(null); const [loadingRows, setLoadingRows] = useState(false); const [importJob, setImportJob] = useState<{ id: string; status: string; totalRows: number; processedRows: number; createdRows: number } | null>(null); const importRef = useRef<HTMLInputElement>(null);
-  const databaseRef = useRef(database); const onChangeRef = useRef(onChange); databaseRef.current = database; onChangeRef.current = onChange;
-  useEffect(() => { setActiveId(database.views[0]?.id || ""); }, [database.views]); useEffect(() => { const nextSort = (activeView?.sort || {}) as Sort & { sorts?: Sort[] }; setFilter((activeView?.filter || {}) as FilterNode); setSort(nextSort); setSorts(nextSort.sorts || []); setViewConfig((activeView?.config || {}) as Record<string, unknown>); }, [activeView?.config, activeView?.filter, activeView?.sort]); useEffect(() => { let cancelled = false; setLoadingRows(true); void fetch(`/api/databases/${database.id}/rows?take=100`, { cache: "no-store" }).then(async (response) => response.ok ? response.json() as Promise<{ rows: DatabaseRow[]; nextCursor: string | null }> : null).then((result) => { if (!cancelled && result) { onChangeRef.current({ ...databaseRef.current, rows: result.rows }); setNextRowCursor(result.nextCursor); } }).catch(() => !cancelled && setNotice("無法載入資料庫列")).finally(() => !cancelled && setLoadingRows(false)); return () => { cancelled = true; }; }, [database.id]);
-  const rows = useMemo(() => [...database.rows].filter((row) => matchesFilter(row, filter, database, allDatabases)).sort((a, b) => { const activeSorts = [sort, ...sorts].filter((item) => item.propertyId && item.direction); for (const item of activeSorts) { const property = database.properties.find((candidate) => candidate.id === item.propertyId); const compare = property ? calculatedValue(a, property, allDatabases).localeCompare(calculatedValue(b, property, allDatabases), undefined, { numeric: true }) : 0; if (compare) return item.direction === "desc" ? -compare : compare; } return a.position - b.position; }), [database, allDatabases, filter, sort, sorts]);
-  const save = async (path: string, body: unknown) => { const response = await fetch(path, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); if (!response.ok) throw new Error(); return response.json(); };
-  const patch = async (path: string, body: unknown) => { const response = await fetch(path, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); if (!response.ok) throw new Error(); return response.json(); };
-  const remove = async (path: string) => { const response = await fetch(path, { method: "DELETE" }); if (!response.ok) throw new Error(); return response.json(); };
-  async function loadMoreRows() { if (!nextRowCursor || loadingRows) return; setLoadingRows(true); try { const response = await fetch(`/api/databases/${database.id}/rows?take=100&cursor=${encodeURIComponent(nextRowCursor)}`, { cache: "no-store" }); const result = await response.json() as { rows?: DatabaseRow[]; nextCursor?: string | null; error?: string }; if (!response.ok) throw new Error(result.error); onChange({ ...database, rows: [...database.rows, ...(result.rows || [])] }); setNextRowCursor(result.nextCursor || null); } catch { setNotice("無法載入更多列"); } finally { setLoadingRows(false); } }
-  async function addRow(values: Record<string, unknown> = {}) { try { const name = database.properties[0]; const result = await save(`/api/databases/${database.id}/rows`, { values: { ...(name && !Object.keys(values).length ? { [name.id]: "未命名紀錄" } : {}), ...values } }) as DatabaseRow & { createdRows?: DatabaseRow[] }; onChange({ ...database, rows: [...database.rows, result, ...(result.createdRows || [])] }); setNotice(result.createdRows?.length ? `已新增一列與 ${result.createdRows.length} 列自動化紀錄` : "已新增一列"); } catch { setNotice("無法新增列，請確認你的編輯權限"); } }
-  function exportCsv() { const source = rows.map((row) => database.properties.map((property) => calculatedValue(row, property, allDatabases))); const blob = new Blob(["\ufeff" + toCsv([[...database.properties.map((property) => property.name)], ...source])], { type: "text/csv;charset=utf-8" }); const href = URL.createObjectURL(blob); const link = document.createElement("a"); link.href = href; link.download = `${database.name}.csv`; link.click(); URL.revokeObjectURL(href); setNotice(`已匯出 ${source.length} 列 CSV`); }
-  async function refreshImportedRows() { const response = await fetch(`/api/databases/${database.id}/rows?take=100`, { cache: "no-store" }); if (!response.ok) return; const result = await response.json() as { rows: DatabaseRow[]; nextCursor: string | null }; onChange({ ...database, rows: result.rows }); setNextRowCursor(result.nextCursor); }
-  async function rollbackImport() { if (!importJob || !window.confirm("確定要回復這次匯入的所有列嗎？")) return; const response = await fetch(`/api/databases/${database.id}/rows/import`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobId: importJob.id }) }); const result = await response.json() as { rolledBackRows?: number; error?: string }; if (!response.ok) return setNotice(result.error || "無法回復匯入"); setImportJob({ ...importJob, status: "ROLLED_BACK" }); await refreshImportedRows(); setNotice(`已回復 ${result.rolledBackRows || 0} 列匯入資料`); }
-  async function retryImport() { if (!importJob) return; const response = await fetch(`/api/databases/${database.id}/rows/import`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jobId: importJob.id, action: "retry" }) }); const result = await response.json() as { id?: string; status?: string; totalRows?: number; processedRows?: number; createdRows?: number; error?: string }; if (!response.ok || !result.id) return setNotice(result.error || "無法重新嘗試匯入"); const pendingJob = { id: result.id, status: result.status || "PENDING", totalRows: result.totalRows || importJob.totalRows, processedRows: result.processedRows || 0, createdRows: result.createdRows || 0 }; setImportJob(pendingJob); setNotice(`已重新排入 ${pendingJob.totalRows} 列匯入，正在背景處理…`); const poll = window.setInterval(() => void fetch(`/api/databases/${database.id}/rows/import?jobId=${encodeURIComponent(pendingJob.id)}`, { cache: "no-store" }).then(async (reply) => reply.ok ? reply.json() : null).then((job: { status?: string; processedRows?: number; totalRows?: number; createdRows?: number; errorRows?: Array<{ message?: string }> } | null) => { if (!job?.status) { window.clearInterval(poll); return setNotice("無法讀取匯入進度"); } const nextJob = { ...pendingJob, status: job.status, totalRows: job.totalRows || pendingJob.totalRows, processedRows: job.processedRows || 0, createdRows: job.createdRows || 0 }; setImportJob(nextJob); if (job.status === "RUNNING" || job.status === "PENDING") return setNotice(`匯入中：${nextJob.processedRows}/${nextJob.totalRows}`); window.clearInterval(poll); if (job.status === "COMPLETED") { void refreshImportedRows(); return setNotice(`已匯入 ${nextJob.totalRows} 列（含自動化共 ${nextJob.createdRows} 列）。`); } setNotice(job.errorRows?.[0]?.message || "CSV 匯入失敗，可下載錯誤報表。"); }), 1_000); }
-  async function importCsv(file: File) { try { const rows = parseCsv(await file.text()); const [header, ...data] = rows; if (!header?.length) throw new Error("CSV 沒有標題列"); const properties = header.map((name) => database.properties.find((property) => property.name === name.trim()) || null); if (properties.some((property) => !property)) throw new Error("CSV 含有不存在的欄位名稱"); const importedRows = data.slice(0, 2_000).map((values) => { const row: Record<string, unknown> = {}; values.forEach((value, index) => { const property = properties[index]; if (!property || value === "") return; row[property.id] = property.type === "NUMBER" ? Number(value) : property.type === "CHECKBOX" ? value.toLowerCase() === "true" : property.type === "MULTI_SELECT" || property.type === "RELATION" || property.type === "FILES" ? value.split("|").map((item) => item.trim()).filter(Boolean) : value; }); return row; }); if (!importedRows.length) throw new Error("CSV 沒有可匯入的資料列"); const response = await fetch(`/api/databases/${database.id}/rows/import`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rows: importedRows }) }); const result = await response.json() as { error?: string; id?: string; totalRows?: number }; if (!response.ok || !result.id) throw new Error(result.error || "資料不正確"); const pendingJob = { id: result.id, status: "PENDING", totalRows: result.totalRows || 0, processedRows: 0, createdRows: 0 }; setImportJob(pendingJob); setNotice(`已排入 ${pendingJob.totalRows} 列匯入，正在背景處理…`); const poll = window.setInterval(() => void fetch(`/api/databases/${database.id}/rows/import?jobId=${encodeURIComponent(result.id!)}`, { cache: "no-store" }).then(async (reply) => reply.ok ? reply.json() : null).then((job: { id?: string; status?: string; processedRows?: number; totalRows?: number; createdRows?: number; errorRows?: Array<{ message?: string }> } | null) => { if (!job?.status) { window.clearInterval(poll); return setNotice("無法讀取匯入進度"); } const nextJob = { id: result.id!, status: job.status, totalRows: job.totalRows || pendingJob.totalRows, processedRows: job.processedRows || 0, createdRows: job.createdRows || 0 }; setImportJob(nextJob); if (job.status === "RUNNING" || job.status === "PENDING") return setNotice(`匯入中：${nextJob.processedRows}/${nextJob.totalRows}`); window.clearInterval(poll); if (job.status === "COMPLETED") { void refreshImportedRows(); return setNotice(`已匯入 ${nextJob.totalRows} 列（含自動化共 ${nextJob.createdRows} 列）。`); } setNotice(job.errorRows?.[0]?.message || "CSV 匯入失敗，可下載錯誤報表。"); }), 1_000); } catch (error) { setNotice(error instanceof Error ? error.message : "CSV 匯入失敗"); } finally { if (importRef.current) importRef.current.value = ""; } }
-  async function saveRow(row: DatabaseRow, values: Record<string, unknown>) { try { const result = await patch(`/api/databases/${database.id}/rows/${row.id}`, { values }) as DatabaseRow & { createdRows?: DatabaseRow[] }; onChange({ ...database, rows: [...database.rows.map((item) => item.id === row.id ? { ...item, ...result } : item), ...(result.createdRows || [])] }); setNotice(result.createdRows?.length ? `已儲存並新增 ${result.createdRows.length} 列自動化紀錄` : "已儲存"); } catch { setNotice("變更尚未儲存"); } }
-  async function removeRow(row: DatabaseRow) { if (!window.confirm("確定要刪除這一列嗎？")) return; try { await remove(`/api/databases/${database.id}/rows/${row.id}`); onChange({ ...database, rows: database.rows.filter((item) => item.id !== row.id) }); setNotice("已刪除列"); } catch { setNotice("無法刪除列"); } }
-  async function toggleRowTrash() { const next = !showRowTrash; setShowRowTrash(next); if (!next) return; const response = await fetch(`/api/databases/${database.id}/recycle`, { cache: "no-store" }); if (!response.ok) return setNotice("無法讀取列回收桶"); setTrashedRows(await response.json()); }
-  async function restoreRow(row: { deletionBatchId: string | null }) { if (!row.deletionBatchId) return; const response = await fetch(`/api/databases/${database.id}/recycle/${row.deletionBatchId}`, { method: "PATCH" }); const result = await response.json(); if (!response.ok) return setNotice(result.error || "無法還原列"); setTrashedRows((current) => current.filter((item) => item.deletionBatchId !== row.deletionBatchId)); setNotice("已還原列；重新整理資料庫後即可看到。"); }
-  async function togglePropertyTrash() { const next = !showPropertyTrash; setShowPropertyTrash(next); if (!next) return; const response = await fetch(`/api/databases/${database.id}/properties/recycle`, { cache: "no-store" }); if (!response.ok) return setNotice("無法讀取欄位回收桶"); setTrashedProperties(await response.json()); }
-  async function restoreProperty(property: { deletionBatchId: string | null }) { if (!property.deletionBatchId) return; const response = await fetch(`/api/databases/${database.id}/properties/recycle/${property.deletionBatchId}`, { method: "PATCH" }); const result = await response.json(); if (!response.ok) return setNotice(result.error || "無法還原欄位"); window.location.reload(); }
-  async function removeProperty(property: DatabaseProperty) { if (!window.confirm(`確定要刪除欄位「${property.name}」嗎？欄位會移到回收桶，列中的資料會保留並可還原。`)) return; try { await remove(`/api/databases/${database.id}/properties/${property.id}`); onChange({ ...database, properties: database.properties.filter((item) => item.id !== property.id) }); setNotice("已將欄位移到回收桶"); } catch { setNotice("無法刪除欄位"); } }
-  async function removeView() { if (!activeView || !window.confirm(`確定要刪除檢視「${activeView.name}」嗎？`)) return; try { await remove(`/api/databases/${database.id}/views/${activeView.id}`); const views = database.views.filter((item) => item.id !== activeView.id); onChange({ ...database, views }); setActiveId(views[0]?.id || ""); setNotice("已刪除檢視"); } catch { setNotice("資料庫至少要保留一個檢視"); } }
-  async function removeDatabase() { if (!window.confirm(`確定要刪除資料庫「${database.name}」嗎？所有欄位、列、檢視與模板都會永久刪除。`)) return; try { await remove(`/api/databases/${database.id}`); onDelete(database.id); } catch { setNotice("無法刪除資料庫"); } }
-  async function reorder(kind: "properties" | "rows", sourceId: string, targetId: string) { if (!editable || sourceId === targetId) return; const source = kind === "properties" ? database.properties : database.rows; const next = [...source]; const from = next.findIndex((item) => item.id === sourceId); const to = next.findIndex((item) => item.id === targetId); if (from < 0 || to < 0) return; const [moved] = next.splice(from, 1); next.splice(to, 0, moved); try { const response = await fetch(`/api/databases/${database.id}/${kind}/order`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(kind === "properties" ? { propertyIds: next.map((item) => item.id) } : { rowIds: next.map((item) => item.id) }) }); if (!response.ok) throw new Error(); if (kind === "properties") onChange({ ...database, properties: (next as DatabaseProperty[]).map((item, position) => ({ ...item, position })) }); else onChange({ ...database, rows: (next as DatabaseRow[]).map((item, position) => ({ ...item, position })) }); setNotice(kind === "properties" ? "欄位順序已更新" : "列順序已更新"); } catch { setNotice("排序未儲存，請重新整理後再試"); } }
-  async function removeTemplate(template: DatabaseTemplate) { if (!window.confirm(`確定要刪除模板「${template.name}」嗎？`)) return; try { await remove(`/api/databases/${database.id}/templates/${template.id}`); onChange({ ...database, templates: database.templates.filter((item) => item.id !== template.id) }); setNotice("已刪除模板"); } catch { setNotice("無法刪除模板"); } }
-  async function removeAutomation(automation: DatabaseAutomation) { if (!window.confirm(`確定要刪除自動化「${automation.name}」嗎？`)) return; try { await remove(`/api/databases/${database.id}/automations/${automation.id}`); onChange({ ...database, automations: database.automations.filter((item) => item.id !== automation.id) }); setNotice("已刪除自動化"); } catch { setNotice("無法刪除自動化"); } }
-  function resetPropertyComposer() { setPropertyName(""); setPropertyOptions(""); setPropertyDescription(""); setPropertyPlaceholder(""); setPropertyMaxLength(""); setNumberFormat("number"); setNumberPrecision("0"); setNumberCurrency("TWD"); setDateIncludeTime(false); setAllowCustomChoice(false); setPersonMultiple(false); setFileLimit("10"); setRelatedDatabaseId(""); setRollupRelationId(""); setRollupTargetPropertyId(""); setPropertyType("TEXT"); }
-  async function addProperty(event?: React.FormEvent<HTMLFormElement>) { event?.preventDefault(); if (!propertyName.trim()) return setNotice("請先輸入欄位名稱"); const description = propertyDescription.trim(); const base = description ? { description } : {}; let options: unknown = Object.keys(base).length ? base : undefined; if (["SELECT", "MULTI_SELECT", "STATUS"].includes(propertyType)) { const choices = propertyOptions.split(",").map((item) => item.trim()).filter(Boolean); options = { ...base, choices: choices.length ? choices : propertyType === "STATUS" ? ["未開始", "進行中", "已完成"] : [], allowCustom: allowCustomChoice }; } if (["TEXT", "URL", "EMAIL", "PHONE"].includes(propertyType)) options = { ...base, ...(propertyPlaceholder.trim() ? { placeholder: propertyPlaceholder.trim() } : {}), ...(propertyMaxLength ? { maxLength: Number(propertyMaxLength) } : {}) }; if (propertyType === "NUMBER") options = { ...base, format: numberFormat, precision: Number(numberPrecision), ...(numberFormat === "currency" ? { currency: numberCurrency.toUpperCase() } : {}) }; if (propertyType === "DATE") options = { ...base, includeTime: dateIncludeTime }; if (propertyType === "PERSON") options = { ...base, multiple: personMultiple }; if (propertyType === "FILES") options = { ...base, maxFiles: Number(fileLimit || 10) }; if (propertyType === "CHECKBOX") options = { ...base, ...(propertyPlaceholder.trim() ? { label: propertyPlaceholder.trim() } : {}) }; if (propertyType === "FORMULA") options = { expression: propertyOptions }; if (propertyType === "RELATION") { if (!relatedDatabaseId) return setNotice("請選擇要關聯的資料庫"); options = { databaseId: relatedDatabaseId }; } if (propertyType === "ROLLUP") { const relation = database.properties.find((property) => property.id === rollupRelationId); const targetDatabaseId = relation && String(objectOptions(relation).databaseId || ""); if (!relation || !targetDatabaseId || !rollupTargetPropertyId) return setNotice("請選擇關聯欄位與要彙總的欄位"); options = { databaseId: targetDatabaseId, relationPropertyId: rollupRelationId, targetPropertyId: rollupTargetPropertyId, operation: rollupOperation }; } try { const property = await save(`/api/databases/${database.id}/properties`, { name: propertyName.trim(), type: propertyType, options }); onChange({ ...database, properties: [...database.properties, property] }); resetPropertyComposer(); setShowColumnComposer(false); setNotice("已新增欄位"); } catch { setNotice("無法新增欄位，請確認欄位設定與編輯權限"); } }
-  async function addView() { const name = window.prompt("新檢視名稱", "新檢視"); if (!name?.trim()) return; const layout = window.prompt(`版面：${layouts.join("、")}`, "TABLE")?.toUpperCase() as DatabaseViewLayout; if (!layouts.includes(layout)) return setNotice("版面不正確"); const view = await save(`/api/databases/${database.id}/views`, { name, layout, filter, sort }); onChange({ ...database, views: [...database.views, view] }); setActiveId(view.id); }
-  async function saveView() { if (!activeView) return; try { const view = await patch(`/api/databases/${database.id}/views/${activeView.id}`, { filter, sort: { ...sort, sorts }, config: viewConfig }); onChange({ ...database, views: database.views.map((item) => item.id === view.id ? view : item) }); setNotice("檢視已儲存"); } catch { setNotice("檢視尚未儲存"); } }
-  async function addTemplate() { const name = window.prompt("模板名稱", "新模板"); if (!name?.trim()) return; const values: Record<string, unknown> = {}; database.properties.forEach((property) => { if (!["FORMULA","ROLLUP","UNIQUE_ID","CREATED_TIME","UPDATED_TIME"].includes(property.type)) values[property.id] = window.prompt(`${property.name} 預設值`, "") || ""; }); const template = await save(`/api/databases/${database.id}/templates`, { name, values }); onChange({ ...database, templates: [...database.templates.filter((item) => item.id !== template.id), template] }); }
-  async function addAutomation() { const name = window.prompt("規則名稱", "設定預設狀態"); if (!name?.trim()) return; const trigger = window.prompt("觸發：ROW_CREATED、ROW_UPDATED", "ROW_CREATED"); const action = window.prompt("動作：SET_PROPERTY、CREATE_ROW、NOTIFY", "SET_PROPERTY"); if (!trigger || !["ROW_CREATED", "ROW_UPDATED"].includes(trigger) || !action || !["SET_PROPERTY", "CREATE_ROW", "NOTIFY"].includes(action)) return setNotice("觸發或動作不正確"); let config: Record<string, unknown> = {}; if (action === "SET_PROPERTY") { const propName = window.prompt(`欄位：${database.properties.map((item) => item.name).join("、")}`); const property = database.properties.find((item) => item.name === propName); if (!property) return setNotice("找不到欄位"); config = { propertyId: property.id, value: window.prompt("設定值", "") || "" }; } else if (action === "CREATE_ROW") { const values: Record<string, unknown> = {}; for (const property of database.properties.filter((item) => !["FORMULA", "ROLLUP", "UNIQUE_ID", "CREATED_TIME", "UPDATED_TIME"].includes(item.type))) { const value = window.prompt(`新列的「${property.name}」預設值（留白即不設定）`, ""); if (value) values[property.id] = property.type === "CHECKBOX" ? value === "true" : value; } if (!Object.keys(values).length) return setNotice("請至少設定一個新列欄位值"); config = { values }; } else config = { title: name, body: window.prompt("通知內容", "資料庫自動化已執行") || "" }; const automation = await save(`/api/databases/${database.id}/automations`, { name, trigger, action, config }); onChange({ ...database, automations: [automation, ...database.automations] }); setNotice("已建立自動化規則"); }
-  function cell(row: DatabaseRow, property: DatabaseProperty) { const value = row.values[property.id]; const config = objectOptions(property); const update = (next: unknown) => { if (editable) void saveRow(row, { ...row.values, [property.id]: next }); }; if (["FORMULA","ROLLUP","UNIQUE_ID","CREATED_TIME","UPDATED_TIME"].includes(property.type)) return <span className="db-derived">{calculatedValue(row, property, allDatabases) || "—"}</span>; if (property.type === "RELATION") { const target = allDatabases.find((item) => item.id === config.databaseId); const selected = Array.isArray(value) ? value.map(String) : []; return <select className="db-cell-select" disabled={!editable} multiple value={selected} onChange={(event) => update(Array.from(event.currentTarget.selectedOptions).map((option) => option.value))}>{target?.rows.map((targetRow) => <option key={targetRow.id} value={targetRow.id}>{text(targetRow.values[target.properties[0]?.id || ""]) || targetRow.id.slice(-6)}</option>)}</select>; } if (property.type === "FILES") return <input className="db-cell-input" disabled={!editable} defaultValue={stringArray(value).join(", ")} placeholder="附件 ID，以逗號分隔" onBlur={(event) => update(event.currentTarget.value.split(",").map((item) => item.trim()).filter(Boolean))} />; if (property.type === "CHECKBOX") return <input className="db-checkbox" disabled={!editable} type="checkbox" checked={Boolean(value)} onChange={(event) => update(event.target.checked)} />; if (["SELECT","STATUS"].includes(property.type)) return <select className="db-cell-select" disabled={!editable} value={text(value)} onChange={(event) => update(event.target.value)}><option value="">—</option>{optionsFor(property).map((item) => <option key={item}>{item}</option>)}</select>; if (property.type === "MULTI_SELECT") return <select className="db-cell-select" disabled={!editable} multiple value={Array.isArray(value) ? value.map(String) : []} onChange={(event) => update(Array.from(event.currentTarget.selectedOptions).map((option) => option.value))}>{optionsFor(property).map((item) => <option key={item}>{item}</option>)}</select>; const type = property.type === "NUMBER" ? "number" : property.type === "DATE" ? config.includeTime ? "datetime-local" : "date" : property.type === "EMAIL" ? "email" : property.type === "URL" ? "url" : "text"; return <input className="db-cell-input" disabled={!editable} type={type} maxLength={typeof config.maxLength === "number" ? config.maxLength : undefined} placeholder={typeof config.placeholder === "string" ? config.placeholder : undefined} step={property.type === "NUMBER" ? String(1 / Math.pow(10, Number(config.precision || 0))) : undefined} defaultValue={text(value)} onBlur={(event) => update(property.type === "NUMBER" && event.currentTarget.value !== "" ? Number(event.currentTarget.value) : event.currentTarget.value)} />; }
-  const grouping = database.properties.find((property) => property.id === viewConfig.groupPropertyId) || database.properties.find((property) => property.type === "STATUS" || property.type === "SELECT"); const date = database.properties.find((property) => property.id === viewConfig.datePropertyId) || database.properties.find((property) => property.type === "DATE");
-  const content = activeView?.layout === "FORM" ? <form className="db-form" onSubmit={(event) => { event.preventDefault(); void addRow(formValues).then(() => { setFormValues({}); setNotice("表單已送出"); }); }}>{database.properties.filter((property) => !["FORMULA","ROLLUP","UNIQUE_ID","CREATED_TIME","UPDATED_TIME"].includes(property.type)).map((property) => <label key={property.id}>{property.name}{property.type === "CHECKBOX" ? <input disabled={!editable} type="checkbox" checked={Boolean(formValues[property.id])} onChange={(event) => setFormValues({ ...formValues, [property.id]: event.target.checked })} /> : ["SELECT","STATUS"].includes(property.type) ? <select disabled={!editable} value={text(formValues[property.id])} onChange={(event) => setFormValues({ ...formValues, [property.id]: event.target.value })}><option value="">—</option>{optionsFor(property).map((item) => <option key={item}>{item}</option>)}</select> : <input disabled={!editable} type={property.type === "DATE" ? "date" : property.type === "NUMBER" ? "number" : "text"} value={text(formValues[property.id])} onChange={(event) => setFormValues({ ...formValues, [property.id]: event.target.value })} />}</label>)}<button className="db-primary" disabled={!editable} type="submit">新增一列</button></form> : activeView?.layout === "BOARD" && grouping ? <div className="db-board">{optionsFor(grouping).map((status) => <section key={status}><header>{status}<span>{rows.filter((row) => text(row.values[grouping.id]) === status).length}</span></header>{rows.filter((row) => text(row.values[grouping.id]) === status).map((row) => <article key={row.id}><strong>{text(row.values[database.properties[0]?.id || ""]) || "未命名"}</strong><small>{database.properties.filter((property) => property.id !== grouping.id && property.id !== database.properties[0]?.id).slice(0, 3).map((property) => `${property.name}: ${calculatedValue(row, property, allDatabases)}`).join(" · ")}</small></article>)}</section>)}</div> : activeView?.layout === "CALENDAR" && date ? <div className="db-calendar">{rows.map((row) => <article key={row.id}><time>{text(row.values[date.id]) || "未排定"}</time><strong>{text(row.values[database.properties[0]?.id || ""]) || "未命名"}</strong></article>)}</div> : activeView?.layout === "TIMELINE" && date ? <div className="db-timeline">{rows.map((row) => <article key={row.id}><time>{text(row.values[date.id]) || "未排定"}</time><span /><strong>{text(row.values[database.properties[0]?.id || ""]) || "未命名"}</strong></article>)}</div> : activeView?.layout === "GALLERY" ? <div className="db-gallery">{rows.map((row) => <article key={row.id}><strong>{text(row.values[database.properties[0]?.id || ""]) || "未命名"}</strong>{database.properties.slice(1,5).map((property) => <p key={property.id}><span>{property.name}</span>{calculatedValue(row, property, allDatabases) || "—"}</p>)}</article>)}</div> : activeView?.layout === "LIST" ? <div className="db-list">{rows.map((row) => <article key={row.id}><span>◇</span><strong>{text(row.values[database.properties[0]?.id || ""]) || "未命名"}</strong><small>{database.properties.slice(1,3).map((property) => calculatedValue(row, property, allDatabases)).join(" · ")}</small></article>)}</div> : <div className="database-table-wrap"><table className="database-table"><thead><tr>{database.properties.map((property) => <th key={property.id} draggable={editable} onDragStart={() => setDraggedPropertyId(property.id)} onDragOver={(event) => editable && event.preventDefault()} onDrop={() => { if (draggedPropertyId) void reorder("properties", draggedPropertyId, property.id); setDraggedPropertyId(null); }}><span>{property.type === "STATUS" ? "◉" : property.type === "DATE" ? "◷" : property.type === "RELATION" ? "↗" : property.type === "FORMULA" ? "ƒ" : "Aa"}</span>{property.name}{editable && <button className="db-delete-small" onClick={() => void removeProperty(property)} title={`刪除 ${property.name}`}>×</button>}</th>)}<th><button className="add-property" disabled={!editable} onClick={() => setShowColumnComposer(true)} title="新增欄位">＋ 欄位</button></th></tr></thead><tbody>{rows.map((row) => <tr key={row.id} draggable={editable} onDragStart={() => setDraggedRowId(row.id)} onDragOver={(event) => editable && event.preventDefault()} onDrop={() => { if (draggedRowId) void reorder("rows", draggedRowId, row.id); setDraggedRowId(null); }}>{database.properties.map((property) => <td key={property.id}>{cell(row, property)}</td>)}<td>{editable && <button className="db-delete-small" onClick={() => void removeRow(row)} title="刪除列">×</button>}</td></tr>)}</tbody></table>{!rows.length && <button className="database-empty" disabled={!editable} onClick={() => void addRow()}>＋ 新增第一列</button>}</div>;
-  return <section className="database-page">
-    <div className="database-title-row"><span className="database-icon">{database.icon}</span><input className="database-title" defaultValue={database.name} onBlur={(event) => patch(`/api/databases/${database.id}`, { name: event.currentTarget.value }).then(() => onChange({ ...database, name: event.currentTarget.value }))} /></div>
-    <div className="database-toolbar"><div className="view-tabs">{database.views.map((view) => <button key={view.id} className={view.id === activeView?.id ? "view-tab active" : "view-tab"} onClick={() => setActiveId(view.id)}>{view.layout === "BOARD" ? "▤" : view.layout === "CALENDAR" ? "◷" : "▦"} {view.name}</button>)}{editable && <button className="add-view" onClick={addView}>＋ 新增檢視</button>}</div><div className="database-actions"><button onClick={() => setControls(!controls)}>篩選與排序</button>{editable && <><button onClick={() => setShowColumnComposer(true)}>＋ 新增欄位</button><button className="button-secondary" onClick={() => void togglePropertyTrash()}>♻ 欄位回收桶</button><button onClick={addTemplate}>模板</button><button onClick={addAutomation}>自動化</button><button onClick={saveView}>儲存檢視</button><button onClick={() => void removeView()}>刪除檢視</button><button className="db-primary" onClick={() => void addRow()}>＋ 新增列</button><button className="database-danger" onClick={() => void removeDatabase()}>刪除資料庫</button></>}</div></div>
-    {showColumnComposer && <form className="database-column-composer" onSubmit={addProperty}>
-      <div><strong>新增欄位</strong><span>欄位屬性會由伺服器驗證並與資料庫一同儲存。</span></div>
-      <input value={propertyName} onChange={(event) => setPropertyName(event.target.value)} placeholder="欄位名稱，例如：負責人" autoFocus required />
-      <select value={propertyType} onChange={(event) => setPropertyType(event.target.value as DatabasePropertyType)}>{(["TEXT", "NUMBER", "SELECT", "MULTI_SELECT", "STATUS", "DATE", "PERSON", "FILES", "CHECKBOX", "URL", "EMAIL", "PHONE", "RELATION", "ROLLUP", "FORMULA"] as DatabasePropertyType[]).map((type) => <option key={type} value={type}>{labels[type]}</option>)}</select>
-      <div className="column-config">
-        <label>說明<input value={propertyDescription} onChange={(event) => setPropertyDescription(event.target.value)} placeholder="欄位用途（選填）" maxLength={300} /></label>
-        {["SELECT", "MULTI_SELECT", "STATUS", "FORMULA"].includes(propertyType) && <label>{propertyType === "FORMULA" ? "公式" : "選項"}<input value={propertyOptions} onChange={(event) => setPropertyOptions(event.target.value)} placeholder={propertyType === "FORMULA" ? "例如 {數量} * {單價}" : "以逗號分隔"} /></label>}
-        {["SELECT", "MULTI_SELECT", "STATUS"].includes(propertyType) && <label className="config-check"><input type="checkbox" checked={allowCustomChoice} onChange={(event) => setAllowCustomChoice(event.target.checked)} />允許匯入自訂選項</label>}
-        {["TEXT", "URL", "EMAIL", "PHONE"].includes(propertyType) && <><label>提示文字<input value={propertyPlaceholder} onChange={(event) => setPropertyPlaceholder(event.target.value)} placeholder="輸入時顯示的提示" maxLength={120} /></label><label>最大字數<input type="number" min="1" max="10000" value={propertyMaxLength} onChange={(event) => setPropertyMaxLength(event.target.value)} placeholder="預設 10000" /></label></>}
-        {propertyType === "NUMBER" && <><label>格式<select value={numberFormat} onChange={(event) => setNumberFormat(event.target.value)}><option value="number">數字</option><option value="percent">百分比</option><option value="currency">貨幣</option></select></label><label>小數位數<input type="number" min="0" max="8" value={numberPrecision} onChange={(event) => setNumberPrecision(event.target.value)} /></label>{numberFormat === "currency" && <label>幣別<input value={numberCurrency} onChange={(event) => setNumberCurrency(event.target.value.toUpperCase())} maxLength={3} placeholder="TWD" /></label>}</>}
-        {propertyType === "DATE" && <label className="config-check"><input type="checkbox" checked={dateIncludeTime} onChange={(event) => setDateIncludeTime(event.target.checked)} />包含時間</label>}
-        {propertyType === "PERSON" && <label className="config-check"><input type="checkbox" checked={personMultiple} onChange={(event) => setPersonMultiple(event.target.checked)} />允許多位成員</label>}
-        {propertyType === "FILES" && <label>檔案上限<input type="number" min="1" max="500" value={fileLimit} onChange={(event) => setFileLimit(event.target.value)} /></label>}
-        {propertyType === "CHECKBOX" && <label>核取標籤<input value={propertyPlaceholder} onChange={(event) => setPropertyPlaceholder(event.target.value)} placeholder="例如：已驗證" maxLength={120} /></label>}
-        {propertyType === "RELATION" && <label>關聯資料庫<select value={relatedDatabaseId} onChange={(event) => setRelatedDatabaseId(event.target.value)} required><option value="">選擇關聯資料庫</option>{allDatabases.filter((item) => item.id !== database.id).map((item) => <option key={item.id} value={item.id}>{item.icon} {item.name}</option>)}</select></label>}
-        {propertyType === "ROLLUP" && <><label>關聯欄位<select value={rollupRelationId} onChange={(event) => { setRollupRelationId(event.target.value); setRollupTargetPropertyId(""); }} required><option value="">選擇關聯欄位</option>{database.properties.filter((property) => property.type === "RELATION").map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select></label><label>彙總欄位<select value={rollupTargetPropertyId} onChange={(event) => setRollupTargetPropertyId(event.target.value)} required><option value="">選擇欄位</option>{allDatabases.find((item) => item.id === String(objectOptions(database.properties.find((property) => property.id === rollupRelationId) || { options: null } as DatabaseProperty).databaseId || ""))?.properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select></label><label>運算<select value={rollupOperation} onChange={(event) => setRollupOperation(event.target.value)}><option value="SHOW_ORIGINAL">顯示原始值</option><option value="COUNT">計數</option><option value="SUM">加總</option></select></label></>}
+function FilterBuilder({
+  node,
+  properties,
+  onChange,
+  onRemove,
+}: {
+  node: FilterNode;
+  properties: DatabaseProperty[];
+  onChange: (next: FilterNode) => void;
+  onRemove?: () => void;
+}) {
+  if (isGroup(node))
+    return (
+      <div className="db-filter-group">
+        <div>
+          <select
+            value={node.logic}
+            onChange={(event) =>
+              onChange({ ...node, logic: event.target.value as "AND" | "OR" })
+            }
+          >
+            <option value="AND">符合全部（AND）</option>
+            <option value="OR">符合任一（OR）</option>
+          </select>
+          <button
+            type="button"
+            onClick={() =>
+              onChange({ ...node, filters: [...node.filters, {}] })
+            }
+          >
+            ＋ 條件
+          </button>
+          <button
+            type="button"
+            onClick={() =>
+              onChange({
+                ...node,
+                filters: [...node.filters, { logic: "AND", filters: [{}] }],
+              })
+            }
+          >
+            ＋ 群組
+          </button>
+          {onRemove && (
+            <button type="button" onClick={onRemove}>
+              移除群組
+            </button>
+          )}
+        </div>
+        {node.filters.map((child, index) => (
+          <FilterBuilder
+            key={index}
+            node={child}
+            properties={properties}
+            onChange={(next) =>
+              onChange({
+                ...node,
+                filters: node.filters.map((item, itemIndex) =>
+                  itemIndex === index ? next : item,
+                ),
+              })
+            }
+            onRemove={() =>
+              onChange({
+                ...node,
+                filters: node.filters.filter(
+                  (_, itemIndex) => itemIndex !== index,
+                ),
+              })
+            }
+          />
+        ))}
       </div>
-      <button className="db-primary" type="submit">新增欄位</button><button type="button" onClick={() => { resetPropertyComposer(); setShowColumnComposer(false); }}>取消</button>
-    </form>}
-    {database.templates.length > 0 && <div className="template-row">模板：{database.templates.map((template) => <span key={template.id}><button onClick={() => void addRow(template.values)}>{template.name}</button>{editable && <button className="template-delete" onClick={() => void removeTemplate(template)} title={`刪除 ${template.name}`}>×</button>}</span>)}</div>}
-    {controls && <div className="database-controls"><label>篩選<select value={filter.propertyId || ""} onChange={(event) => setFilter({ ...filter, propertyId: event.target.value || undefined, operator: undefined, value: "" })}><option value="">所有紀錄</option>{database.properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select></label>{filter.propertyId && <><label>條件<select value={filter.operator || "contains"} onChange={(event) => setFilter({ ...filter, operator: event.target.value as Filter["operator"] })}><option value="contains">包含</option><option value="not_contains">不包含</option><option value="equals">等於</option><option value="not_equals">不等於</option><option value="is_empty">為空白</option><option value="is_not_empty">不為空白</option><option value="greater_than">大於（數字）</option><option value="less_than">小於（數字）</option><option value="on_or_after">日期晚於或等於</option><option value="on_or_before">日期早於或等於</option></select></label>{!(["is_empty", "is_not_empty"] as Filter["operator"][]).includes(filter.operator) && <label>值<input type={(["on_or_after", "on_or_before"] as Filter["operator"][]).includes(filter.operator) ? "date" : (["greater_than", "less_than"] as Filter["operator"][]).includes(filter.operator) ? "number" : "text"} value={filter.value || ""} onChange={(event) => setFilter({ ...filter, value: event.target.value })} /></label>}</>}<label>排序<select value={sort.propertyId || ""} onChange={(event) => setSort({ ...sort, propertyId: event.target.value || undefined })}><option value="">預設順序</option>{database.properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select></label>{sort.propertyId && <label>順序<select value={sort.direction || "asc"} onChange={(event) => setSort({ ...sort, direction: event.target.value as Sort["direction"] })}><option value="asc">遞增</option><option value="desc">遞減</option></select></label>}{activeView?.layout === "BOARD" && <label>看板分組<select value={String(viewConfig.groupPropertyId || grouping?.id || "")} onChange={(event) => setViewConfig({ ...viewConfig, groupPropertyId: event.target.value || undefined })}><option value="">自動選擇</option>{database.properties.filter((property) => property.type === "STATUS" || property.type === "SELECT").map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select></label>}{(["CALENDAR", "TIMELINE"] as DatabaseViewLayout[]).includes(activeView?.layout || "TABLE") && <label>日期欄位<select value={String(viewConfig.datePropertyId || date?.id || "")} onChange={(event) => setViewConfig({ ...viewConfig, datePropertyId: event.target.value || undefined })}><option value="">自動選擇</option>{database.properties.filter((property) => property.type === "DATE").map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select></label>}<span>{notice}</span></div>}
-    {controls && <section className="db-filter-builder"><strong>進階篩選群組</strong><FilterBuilder node={filter} properties={database.properties} onChange={setFilter} /><strong>組合排序</strong><div className="db-sort-list">{sorts.map((item, index) => <span key={index}><select value={item.propertyId || ""} onChange={(event) => setSorts((current) => current.map((value, valueIndex) => valueIndex === index ? { ...value, propertyId: event.target.value || undefined } : value))}><option value="">選擇欄位</option>{database.properties.map((property) => <option key={property.id} value={property.id}>{property.name}</option>)}</select><select value={item.direction || "asc"} onChange={(event) => setSorts((current) => current.map((value, valueIndex) => valueIndex === index ? { ...value, direction: event.target.value as Sort["direction"] } : value))}><option value="asc">遞增</option><option value="desc">遞減</option></select><button type="button" onClick={() => setSorts((current) => current.filter((_, valueIndex) => valueIndex !== index))}>×</button></span>)}<button type="button" onClick={() => setSorts((current) => [...current, { direction: "asc" }])}>＋ 次要排序</button></div></section>}{content}{loadingRows && <p className="hint">正在載入資料庫列…</p>}{nextRowCursor && <button className="button-secondary database-bottom-add" type="button" disabled={loadingRows} onClick={() => void loadMoreRows()}>{loadingRows ? "載入中…" : "載入更多列"}</button>}{<div className="db-import-export"><button type="button" onClick={exportCsv}>⇩ 匯出 CSV</button>{editable && <><button type="button" onClick={() => importRef.current?.click()}>⇧ 匯入 CSV</button><input ref={importRef} hidden type="file" accept=".csv,text/csv" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void importCsv(file); }} /></>}</div>}{importJob && <div className="db-import-status"><span>匯入狀態：{importJob.status}（{importJob.processedRows}/{importJob.totalRows}）</span>{importJob.status === "FAILED" && <><a href={`/api/databases/${database.id}/rows/import?jobId=${encodeURIComponent(importJob.id)}&download=errors`}>下載錯誤 CSV</a>{editable && <button type="button" onClick={() => void retryImport()}>重新嘗試</button>}</>}{importJob.status === "COMPLETED" && editable && <button type="button" onClick={() => void rollbackImport()}>回復這次匯入</button>}</div>}{editable && <><button className="database-bottom-add" onClick={() => void addRow()}>＋ 新增列</button><button className="button-secondary database-bottom-add" onClick={() => void toggleRowTrash()}>♻ 已刪除列</button></>}{showRowTrash && <section className="module-recycle"><h2>資料庫列回收桶</h2>{trashedRows.length ? trashedRows.map((row) => <article key={row.id}><span><strong>{text(row.values[database.properties[0]?.id || ""]) || "未命名紀錄"}</strong><small>刪除於 {new Date(row.deletedAt).toLocaleString("zh-TW")}</small></span>{editable && <button className="collab-primary" onClick={() => void restoreRow(row)}>還原</button>}</article>) : <p className="hint">回收桶是空的。</p>}</section>}{showPropertyTrash && <section className="module-recycle"><h2>資料庫欄位回收桶</h2>{trashedProperties.length ? trashedProperties.map((property) => <article key={property.id}><span><strong>{property.name}</strong><small>刪除於 {new Date(property.deletedAt).toLocaleString("zh-TW")}</small></span>{editable && <button className="collab-primary" onClick={() => void restoreProperty(property)}>還原</button>}</article>) : <p className="hint">回收桶是空的。</p>}</section>}{database.automations.length > 0 && <div className="automation-state">⚡ 自動化：{database.automations.map((automation) => <span key={automation.id}>{automation.name}{editable && <button className="template-delete" onClick={() => void removeAutomation(automation)} title={`刪除 ${automation.name}`}>×</button>}</span>)}</div>}</section>;
+    );
+  const dateOperator =
+    node.operator === "on_or_after" || node.operator === "on_or_before";
+  const numberOperator =
+    node.operator === "greater_than" || node.operator === "less_than";
+  return (
+    <div className="db-filter-condition">
+      <select
+        value={node.propertyId || ""}
+        onChange={(event) =>
+          onChange({
+            ...node,
+            propertyId: event.target.value || undefined,
+            operator: node.operator || "contains",
+          })
+        }
+      >
+        <option value="">選擇欄位</option>
+        {properties.map((property) => (
+          <option key={property.id} value={property.id}>
+            {property.name}
+          </option>
+        ))}
+      </select>
+      <select
+        value={node.operator || "contains"}
+        onChange={(event) =>
+          onChange({
+            ...node,
+            operator: event.target.value as Filter["operator"],
+          })
+        }
+      >
+        {filterOperators.map(([value, label]) => (
+          <option key={value} value={value}>
+            {label}
+          </option>
+        ))}
+      </select>
+      {node.operator !== "is_empty" && node.operator !== "is_not_empty" && (
+        <input
+          type={dateOperator ? "date" : numberOperator ? "number" : "text"}
+          value={node.value || ""}
+          onChange={(event) => onChange({ ...node, value: event.target.value })}
+          placeholder="值"
+        />
+      )}
+      {onRemove && (
+        <button type="button" onClick={onRemove}>
+          ×
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function DatabaseTable({
+  database,
+  allDatabases,
+  editable,
+  onChange,
+  onDelete,
+}: {
+  database: DatabaseData;
+  allDatabases: DatabaseData[];
+  editable: boolean;
+  onChange: (database: DatabaseData) => void;
+  onDelete: (id: string) => void;
+}) {
+  const [activeId, setActiveId] = useState(database.views[0]?.id || "");
+  const activeView =
+    database.views.find((view) => view.id === activeId) || database.views[0];
+  const [filter, setFilter] = useState<FilterNode>(
+    (activeView?.filter || {}) as FilterNode,
+  );
+  const [sort, setSort] = useState<Sort>((activeView?.sort || {}) as Sort);
+  const [sorts, setSorts] = useState<Sort[]>([]);
+  const [viewConfig, setViewConfig] = useState<Record<string, unknown>>(
+    (activeView?.config || {}) as Record<string, unknown>,
+  );
+  const [controls, setControls] = useState(false);
+  const [notice, setNotice] = useState("");
+  const [pendingAction, setPendingAction] =
+    useState<PendingDatabaseAction | null>(null);
+  const [formValues, setFormValues] = useState<Record<string, unknown>>({});
+  const [showColumnComposer, setShowColumnComposer] = useState(false);
+  const [propertyName, setPropertyName] = useState("");
+  const [propertyType, setPropertyType] =
+    useState<DatabasePropertyType>("TEXT");
+  const [propertyOptions, setPropertyOptions] = useState("");
+  const [propertyDescription, setPropertyDescription] = useState("");
+  const [propertyPlaceholder, setPropertyPlaceholder] = useState("");
+  const [propertyMaxLength, setPropertyMaxLength] = useState("");
+  const [numberFormat, setNumberFormat] = useState("number");
+  const [numberPrecision, setNumberPrecision] = useState("0");
+  const [numberCurrency, setNumberCurrency] = useState("TWD");
+  const [dateIncludeTime, setDateIncludeTime] = useState(false);
+  const [allowCustomChoice, setAllowCustomChoice] = useState(false);
+  const [personMultiple, setPersonMultiple] = useState(false);
+  const [fileLimit, setFileLimit] = useState("10");
+  const [relatedDatabaseId, setRelatedDatabaseId] = useState("");
+  const [rollupRelationId, setRollupRelationId] = useState("");
+  const [rollupTargetPropertyId, setRollupTargetPropertyId] = useState("");
+  const [rollupOperation, setRollupOperation] = useState("SHOW_ORIGINAL");
+  const [draggedPropertyId, setDraggedPropertyId] = useState<string | null>(
+    null,
+  );
+  const [draggedRowId, setDraggedRowId] = useState<string | null>(null);
+  const [showRowTrash, setShowRowTrash] = useState(false);
+  const [trashedRows, setTrashedRows] = useState<
+    Array<{
+      id: string;
+      values: Record<string, unknown>;
+      deletedAt: string;
+      deletionBatchId: string | null;
+    }>
+  >([]);
+  const [showPropertyTrash, setShowPropertyTrash] = useState(false);
+  const [trashedProperties, setTrashedProperties] = useState<
+    Array<{
+      id: string;
+      name: string;
+      deletedAt: string;
+      deletionBatchId: string | null;
+    }>
+  >([]);
+  const [nextRowCursor, setNextRowCursor] = useState<string | null>(null);
+  const [loadingRows, setLoadingRows] = useState(false);
+  const [importJob, setImportJob] = useState<{
+    id: string;
+    status: string;
+    totalRows: number;
+    processedRows: number;
+    createdRows: number;
+  } | null>(null);
+  const importRef = useRef<HTMLInputElement>(null);
+  const databaseRef = useRef(database);
+  const onChangeRef = useRef(onChange);
+  databaseRef.current = database;
+  onChangeRef.current = onChange;
+  useEffect(() => {
+    setActiveId(database.views[0]?.id || "");
+  }, [database.views]);
+  useEffect(() => {
+    const nextSort = (activeView?.sort || {}) as Sort & { sorts?: Sort[] };
+    setFilter((activeView?.filter || {}) as FilterNode);
+    setSort(nextSort);
+    setSorts(nextSort.sorts || []);
+    setViewConfig((activeView?.config || {}) as Record<string, unknown>);
+  }, [activeView?.config, activeView?.filter, activeView?.sort]);
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingRows(true);
+    void fetch(`/api/databases/${database.id}/rows?take=100`, {
+      cache: "no-store",
+    })
+      .then(async (response) =>
+        response.ok
+          ? (response.json() as Promise<{
+              rows: DatabaseRow[];
+              nextCursor: string | null;
+            }>)
+          : null,
+      )
+      .then((result) => {
+        if (!cancelled && result) {
+          onChangeRef.current({ ...databaseRef.current, rows: result.rows });
+          setNextRowCursor(result.nextCursor);
+        }
+      })
+      .catch(() => !cancelled && setNotice("無法載入資料庫列"))
+      .finally(() => !cancelled && setLoadingRows(false));
+    return () => {
+      cancelled = true;
+    };
+  }, [database.id]);
+  const rows = useMemo(
+    () =>
+      [...database.rows]
+        .filter((row) => matchesFilter(row, filter, database, allDatabases))
+        .sort((a, b) => {
+          const activeSorts = [sort, ...sorts].filter(
+            (item) => item.propertyId && item.direction,
+          );
+          for (const item of activeSorts) {
+            const property = database.properties.find(
+              (candidate) => candidate.id === item.propertyId,
+            );
+            const compare = property
+              ? calculatedValue(a, property, allDatabases).localeCompare(
+                  calculatedValue(b, property, allDatabases),
+                  undefined,
+                  { numeric: true },
+                )
+              : 0;
+            if (compare) return item.direction === "desc" ? -compare : compare;
+          }
+          return a.position - b.position;
+        }),
+    [database, allDatabases, filter, sort, sorts],
+  );
+  const save = async (path: string, body: unknown) => {
+    const response = await fetch(path, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) throw new Error();
+    return response.json();
+  };
+  const patch = async (path: string, body: unknown) => {
+    const response = await fetch(path, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!response.ok) throw new Error();
+    return response.json();
+  };
+  const remove = async (path: string) => {
+    const response = await fetch(path, { method: "DELETE" });
+    if (!response.ok) throw new Error();
+    return response.json();
+  };
+  async function loadMoreRows() {
+    if (!nextRowCursor || loadingRows) return;
+    setLoadingRows(true);
+    try {
+      const response = await fetch(
+        `/api/databases/${database.id}/rows?take=100&cursor=${encodeURIComponent(nextRowCursor)}`,
+        { cache: "no-store" },
+      );
+      const result = (await response.json()) as {
+        rows?: DatabaseRow[];
+        nextCursor?: string | null;
+        error?: string;
+      };
+      if (!response.ok) throw new Error(result.error);
+      onChange({
+        ...database,
+        rows: [...database.rows, ...(result.rows || [])],
+      });
+      setNextRowCursor(result.nextCursor || null);
+    } catch {
+      setNotice("無法載入更多列");
+    } finally {
+      setLoadingRows(false);
+    }
+  }
+  async function addRow(values: Record<string, unknown> = {}) {
+    try {
+      const name = database.properties[0];
+      const result = (await save(`/api/databases/${database.id}/rows`, {
+        values: {
+          ...(name && !Object.keys(values).length
+            ? { [name.id]: "未命名紀錄" }
+            : {}),
+          ...values,
+        },
+      })) as DatabaseRow & { createdRows?: DatabaseRow[] };
+      onChange({
+        ...database,
+        rows: [...database.rows, result, ...(result.createdRows || [])],
+      });
+      setNotice(
+        result.createdRows?.length
+          ? `已新增一列與 ${result.createdRows.length} 列自動化紀錄`
+          : "已新增一列",
+      );
+    } catch {
+      setNotice("無法新增列，請確認你的編輯權限");
+    }
+  }
+  function exportCsv() {
+    const source = rows.map((row) =>
+      database.properties.map((property) =>
+        calculatedValue(row, property, allDatabases),
+      ),
+    );
+    const blob = new Blob(
+      [
+        "\ufeff" +
+          toCsv([
+            [...database.properties.map((property) => property.name)],
+            ...source,
+          ]),
+      ],
+      { type: "text/csv;charset=utf-8" },
+    );
+    const href = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = `${database.name}.csv`;
+    link.click();
+    URL.revokeObjectURL(href);
+    setNotice(`已匯出 ${source.length} 列 CSV`);
+  }
+  async function refreshImportedRows() {
+    const response = await fetch(
+      `/api/databases/${database.id}/rows?take=100`,
+      { cache: "no-store" },
+    );
+    if (!response.ok) return;
+    const result = (await response.json()) as {
+      rows: DatabaseRow[];
+      nextCursor: string | null;
+    };
+    onChange({ ...database, rows: result.rows });
+    setNextRowCursor(result.nextCursor);
+  }
+  async function rollbackImport() {
+    if (!importJob) return;
+    const response = await fetch(`/api/databases/${database.id}/rows/import`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jobId: importJob.id }),
+    });
+    const result = (await response.json()) as {
+      rolledBackRows?: number;
+      error?: string;
+    };
+    if (!response.ok) return setNotice(result.error || "無法回復匯入");
+    setImportJob({ ...importJob, status: "ROLLED_BACK" });
+    await refreshImportedRows();
+    setNotice(`已回復 ${result.rolledBackRows || 0} 列匯入資料`);
+  }
+  async function retryImport() {
+    if (!importJob) return;
+    const response = await fetch(`/api/databases/${database.id}/rows/import`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ jobId: importJob.id, action: "retry" }),
+    });
+    const result = (await response.json()) as {
+      id?: string;
+      status?: string;
+      totalRows?: number;
+      processedRows?: number;
+      createdRows?: number;
+      error?: string;
+    };
+    if (!response.ok || !result.id)
+      return setNotice(result.error || "無法重新嘗試匯入");
+    const pendingJob = {
+      id: result.id,
+      status: result.status || "PENDING",
+      totalRows: result.totalRows || importJob.totalRows,
+      processedRows: result.processedRows || 0,
+      createdRows: result.createdRows || 0,
+    };
+    setImportJob(pendingJob);
+    setNotice(`已重新排入 ${pendingJob.totalRows} 列匯入，正在背景處理…`);
+    const poll = window.setInterval(
+      () =>
+        void fetch(
+          `/api/databases/${database.id}/rows/import?jobId=${encodeURIComponent(pendingJob.id)}`,
+          { cache: "no-store" },
+        )
+          .then(async (reply) => (reply.ok ? reply.json() : null))
+          .then(
+            (
+              job: {
+                status?: string;
+                processedRows?: number;
+                totalRows?: number;
+                createdRows?: number;
+                errorRows?: Array<{ message?: string }>;
+              } | null,
+            ) => {
+              if (!job?.status) {
+                window.clearInterval(poll);
+                return setNotice("無法讀取匯入進度");
+              }
+              const nextJob = {
+                ...pendingJob,
+                status: job.status,
+                totalRows: job.totalRows || pendingJob.totalRows,
+                processedRows: job.processedRows || 0,
+                createdRows: job.createdRows || 0,
+              };
+              setImportJob(nextJob);
+              if (job.status === "RUNNING" || job.status === "PENDING")
+                return setNotice(
+                  `匯入中：${nextJob.processedRows}/${nextJob.totalRows}`,
+                );
+              window.clearInterval(poll);
+              if (job.status === "COMPLETED") {
+                void refreshImportedRows();
+                return setNotice(
+                  `已匯入 ${nextJob.totalRows} 列（含自動化共 ${nextJob.createdRows} 列）。`,
+                );
+              }
+              setNotice(
+                job.errorRows?.[0]?.message || "CSV 匯入失敗，可下載錯誤報表。",
+              );
+            },
+          ),
+      1_000,
+    );
+  }
+  async function importCsv(file: File) {
+    try {
+      const rows = parseCsv(await file.text());
+      const [header, ...data] = rows;
+      if (!header?.length) throw new Error("CSV 沒有標題列");
+      const properties = header.map(
+        (name) =>
+          database.properties.find(
+            (property) => property.name === name.trim(),
+          ) || null,
+      );
+      if (properties.some((property) => !property))
+        throw new Error("CSV 含有不存在的欄位名稱");
+      const importedRows = data.slice(0, 2_000).map((values) => {
+        const row: Record<string, unknown> = {};
+        values.forEach((value, index) => {
+          const property = properties[index];
+          if (!property || value === "") return;
+          row[property.id] =
+            property.type === "NUMBER"
+              ? Number(value)
+              : property.type === "CHECKBOX"
+                ? value.toLowerCase() === "true"
+                : property.type === "MULTI_SELECT" ||
+                    property.type === "RELATION" ||
+                    property.type === "FILES"
+                  ? value
+                      .split("|")
+                      .map((item) => item.trim())
+                      .filter(Boolean)
+                  : value;
+        });
+        return row;
+      });
+      if (!importedRows.length) throw new Error("CSV 沒有可匯入的資料列");
+      const response = await fetch(
+        `/api/databases/${database.id}/rows/import`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ rows: importedRows }),
+        },
+      );
+      const result = (await response.json()) as {
+        error?: string;
+        id?: string;
+        totalRows?: number;
+      };
+      if (!response.ok || !result.id)
+        throw new Error(result.error || "資料不正確");
+      const pendingJob = {
+        id: result.id,
+        status: "PENDING",
+        totalRows: result.totalRows || 0,
+        processedRows: 0,
+        createdRows: 0,
+      };
+      setImportJob(pendingJob);
+      setNotice(`已排入 ${pendingJob.totalRows} 列匯入，正在背景處理…`);
+      const poll = window.setInterval(
+        () =>
+          void fetch(
+            `/api/databases/${database.id}/rows/import?jobId=${encodeURIComponent(result.id!)}`,
+            { cache: "no-store" },
+          )
+            .then(async (reply) => (reply.ok ? reply.json() : null))
+            .then(
+              (
+                job: {
+                  id?: string;
+                  status?: string;
+                  processedRows?: number;
+                  totalRows?: number;
+                  createdRows?: number;
+                  errorRows?: Array<{ message?: string }>;
+                } | null,
+              ) => {
+                if (!job?.status) {
+                  window.clearInterval(poll);
+                  return setNotice("無法讀取匯入進度");
+                }
+                const nextJob = {
+                  id: result.id!,
+                  status: job.status,
+                  totalRows: job.totalRows || pendingJob.totalRows,
+                  processedRows: job.processedRows || 0,
+                  createdRows: job.createdRows || 0,
+                };
+                setImportJob(nextJob);
+                if (job.status === "RUNNING" || job.status === "PENDING")
+                  return setNotice(
+                    `匯入中：${nextJob.processedRows}/${nextJob.totalRows}`,
+                  );
+                window.clearInterval(poll);
+                if (job.status === "COMPLETED") {
+                  void refreshImportedRows();
+                  return setNotice(
+                    `已匯入 ${nextJob.totalRows} 列（含自動化共 ${nextJob.createdRows} 列）。`,
+                  );
+                }
+                setNotice(
+                  job.errorRows?.[0]?.message ||
+                    "CSV 匯入失敗，可下載錯誤報表。",
+                );
+              },
+            ),
+        1_000,
+      );
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "CSV 匯入失敗");
+    } finally {
+      if (importRef.current) importRef.current.value = "";
+    }
+  }
+  async function saveRow(row: DatabaseRow, values: Record<string, unknown>) {
+    try {
+      const result = (await patch(
+        `/api/databases/${database.id}/rows/${row.id}`,
+        { values },
+      )) as DatabaseRow & { createdRows?: DatabaseRow[] };
+      onChange({
+        ...database,
+        rows: [
+          ...database.rows.map((item) =>
+            item.id === row.id ? { ...item, ...result } : item,
+          ),
+          ...(result.createdRows || []),
+        ],
+      });
+      setNotice(
+        result.createdRows?.length
+          ? `已儲存並新增 ${result.createdRows.length} 列自動化紀錄`
+          : "已儲存",
+      );
+    } catch {
+      setNotice("變更尚未儲存");
+    }
+  }
+  async function removeRow(row: DatabaseRow) {
+    try {
+      await remove(`/api/databases/${database.id}/rows/${row.id}`);
+      onChange({
+        ...database,
+        rows: database.rows.filter((item) => item.id !== row.id),
+      });
+      setNotice("已刪除列");
+    } catch {
+      setNotice("無法刪除列");
+    }
+  }
+  async function toggleRowTrash() {
+    const next = !showRowTrash;
+    setShowRowTrash(next);
+    if (!next) return;
+    const response = await fetch(`/api/databases/${database.id}/recycle`, {
+      cache: "no-store",
+    });
+    if (!response.ok) return setNotice("無法讀取列回收桶");
+    setTrashedRows(await response.json());
+  }
+  async function restoreRow(row: { deletionBatchId: string | null }) {
+    if (!row.deletionBatchId) return;
+    const response = await fetch(
+      `/api/databases/${database.id}/recycle/${row.deletionBatchId}`,
+      { method: "PATCH" },
+    );
+    const result = await response.json();
+    if (!response.ok) return setNotice(result.error || "無法還原列");
+    setTrashedRows((current) =>
+      current.filter((item) => item.deletionBatchId !== row.deletionBatchId),
+    );
+    setNotice("已還原列；重新整理資料庫後即可看到。");
+  }
+  async function togglePropertyTrash() {
+    const next = !showPropertyTrash;
+    setShowPropertyTrash(next);
+    if (!next) return;
+    const response = await fetch(
+      `/api/databases/${database.id}/properties/recycle`,
+      { cache: "no-store" },
+    );
+    if (!response.ok) return setNotice("無法讀取欄位回收桶");
+    setTrashedProperties(await response.json());
+  }
+  async function restoreProperty(property: { deletionBatchId: string | null }) {
+    if (!property.deletionBatchId) return;
+    const response = await fetch(
+      `/api/databases/${database.id}/properties/recycle/${property.deletionBatchId}`,
+      { method: "PATCH" },
+    );
+    const result = await response.json();
+    if (!response.ok) return setNotice(result.error || "無法還原欄位");
+    window.location.reload();
+  }
+  async function removeProperty(property: DatabaseProperty) {
+    try {
+      await remove(`/api/databases/${database.id}/properties/${property.id}`);
+      onChange({
+        ...database,
+        properties: database.properties.filter(
+          (item) => item.id !== property.id,
+        ),
+      });
+      setNotice("已將欄位移到回收桶");
+    } catch {
+      setNotice("無法刪除欄位");
+    }
+  }
+  async function removeView(view: DatabaseViewData) {
+    try {
+      await remove(`/api/databases/${database.id}/views/${view.id}`);
+      const views = database.views.filter((item) => item.id !== view.id);
+      onChange({ ...database, views });
+      setActiveId(views[0]?.id || "");
+      setNotice("已刪除檢視");
+    } catch {
+      setNotice("資料庫至少要保留一個檢視");
+    }
+  }
+  async function removeDatabase() {
+    try {
+      await remove(`/api/databases/${database.id}`);
+      onDelete(database.id);
+    } catch {
+      setNotice("無法刪除資料庫");
+    }
+  }
+  async function reorder(
+    kind: "properties" | "rows",
+    sourceId: string,
+    targetId: string,
+  ) {
+    if (!editable || sourceId === targetId) return;
+    const source = kind === "properties" ? database.properties : database.rows;
+    const next = [...source];
+    const from = next.findIndex((item) => item.id === sourceId);
+    const to = next.findIndex((item) => item.id === targetId);
+    if (from < 0 || to < 0) return;
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+    try {
+      const response = await fetch(
+        `/api/databases/${database.id}/${kind}/order`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            kind === "properties"
+              ? { propertyIds: next.map((item) => item.id) }
+              : { rowIds: next.map((item) => item.id) },
+          ),
+        },
+      );
+      if (!response.ok) throw new Error();
+      if (kind === "properties")
+        onChange({
+          ...database,
+          properties: (next as DatabaseProperty[]).map((item, position) => ({
+            ...item,
+            position,
+          })),
+        });
+      else
+        onChange({
+          ...database,
+          rows: (next as DatabaseRow[]).map((item, position) => ({
+            ...item,
+            position,
+          })),
+        });
+      setNotice(kind === "properties" ? "欄位順序已更新" : "列順序已更新");
+    } catch {
+      setNotice("排序未儲存，請重新整理後再試");
+    }
+  }
+  async function removeTemplate(template: DatabaseTemplate) {
+    try {
+      await remove(`/api/databases/${database.id}/templates/${template.id}`);
+      onChange({
+        ...database,
+        templates: database.templates.filter((item) => item.id !== template.id),
+      });
+      setNotice("已刪除模板");
+    } catch {
+      setNotice("無法刪除模板");
+    }
+  }
+  async function removeAutomation(automation: DatabaseAutomation) {
+    try {
+      await remove(
+        `/api/databases/${database.id}/automations/${automation.id}`,
+      );
+      onChange({
+        ...database,
+        automations: database.automations.filter(
+          (item) => item.id !== automation.id,
+        ),
+      });
+      setNotice("已刪除自動化");
+    } catch {
+      setNotice("無法刪除自動化");
+    }
+  }
+  function resetPropertyComposer() {
+    setPropertyName("");
+    setPropertyOptions("");
+    setPropertyDescription("");
+    setPropertyPlaceholder("");
+    setPropertyMaxLength("");
+    setNumberFormat("number");
+    setNumberPrecision("0");
+    setNumberCurrency("TWD");
+    setDateIncludeTime(false);
+    setAllowCustomChoice(false);
+    setPersonMultiple(false);
+    setFileLimit("10");
+    setRelatedDatabaseId("");
+    setRollupRelationId("");
+    setRollupTargetPropertyId("");
+    setPropertyType("TEXT");
+  }
+  async function addProperty(event?: React.FormEvent<HTMLFormElement>) {
+    event?.preventDefault();
+    if (!propertyName.trim()) return setNotice("請先輸入欄位名稱");
+    const description = propertyDescription.trim();
+    const base = description ? { description } : {};
+    let options: unknown = Object.keys(base).length ? base : undefined;
+    if (["SELECT", "MULTI_SELECT", "STATUS"].includes(propertyType)) {
+      const choices = propertyOptions
+        .split(",")
+        .map((item) => item.trim())
+        .filter(Boolean);
+      options = {
+        ...base,
+        choices: choices.length
+          ? choices
+          : propertyType === "STATUS"
+            ? ["未開始", "進行中", "已完成"]
+            : [],
+        allowCustom: allowCustomChoice,
+      };
+    }
+    if (["TEXT", "URL", "EMAIL", "PHONE"].includes(propertyType))
+      options = {
+        ...base,
+        ...(propertyPlaceholder.trim()
+          ? { placeholder: propertyPlaceholder.trim() }
+          : {}),
+        ...(propertyMaxLength ? { maxLength: Number(propertyMaxLength) } : {}),
+      };
+    if (propertyType === "NUMBER")
+      options = {
+        ...base,
+        format: numberFormat,
+        precision: Number(numberPrecision),
+        ...(numberFormat === "currency"
+          ? { currency: numberCurrency.toUpperCase() }
+          : {}),
+      };
+    if (propertyType === "DATE")
+      options = { ...base, includeTime: dateIncludeTime };
+    if (propertyType === "PERSON")
+      options = { ...base, multiple: personMultiple };
+    if (propertyType === "FILES")
+      options = { ...base, maxFiles: Number(fileLimit || 10) };
+    if (propertyType === "CHECKBOX")
+      options = {
+        ...base,
+        ...(propertyPlaceholder.trim()
+          ? { label: propertyPlaceholder.trim() }
+          : {}),
+      };
+    if (propertyType === "FORMULA") options = { expression: propertyOptions };
+    if (propertyType === "RELATION") {
+      if (!relatedDatabaseId) return setNotice("請選擇要關聯的資料庫");
+      options = { databaseId: relatedDatabaseId };
+    }
+    if (propertyType === "ROLLUP") {
+      const relation = database.properties.find(
+        (property) => property.id === rollupRelationId,
+      );
+      const targetDatabaseId =
+        relation && String(objectOptions(relation).databaseId || "");
+      if (!relation || !targetDatabaseId || !rollupTargetPropertyId)
+        return setNotice("請選擇關聯欄位與要彙總的欄位");
+      options = {
+        databaseId: targetDatabaseId,
+        relationPropertyId: rollupRelationId,
+        targetPropertyId: rollupTargetPropertyId,
+        operation: rollupOperation,
+      };
+    }
+    try {
+      const property = await save(`/api/databases/${database.id}/properties`, {
+        name: propertyName.trim(),
+        type: propertyType,
+        options,
+      });
+      onChange({ ...database, properties: [...database.properties, property] });
+      resetPropertyComposer();
+      setShowColumnComposer(false);
+      setNotice("已新增欄位");
+    } catch {
+      setNotice("無法新增欄位，請確認欄位設定與編輯權限");
+    }
+  }
+  async function addView() {
+    const name = window.prompt("新檢視名稱", "新檢視");
+    if (!name?.trim()) return;
+    const layout = window
+      .prompt(`版面：${layouts.join("、")}`, "TABLE")
+      ?.toUpperCase() as DatabaseViewLayout;
+    if (!layouts.includes(layout)) return setNotice("版面不正確");
+    const view = await save(`/api/databases/${database.id}/views`, {
+      name,
+      layout,
+      filter,
+      sort,
+    });
+    onChange({ ...database, views: [...database.views, view] });
+    setActiveId(view.id);
+  }
+  async function saveView() {
+    if (!activeView) return;
+    try {
+      const view = await patch(
+        `/api/databases/${database.id}/views/${activeView.id}`,
+        { filter, sort: { ...sort, sorts }, config: viewConfig },
+      );
+      onChange({
+        ...database,
+        views: database.views.map((item) =>
+          item.id === view.id ? view : item,
+        ),
+      });
+      setNotice("檢視已儲存");
+    } catch {
+      setNotice("檢視尚未儲存");
+    }
+  }
+  async function addTemplate() {
+    const name = window.prompt("模板名稱", "新模板");
+    if (!name?.trim()) return;
+    const values: Record<string, unknown> = {};
+    database.properties.forEach((property) => {
+      if (
+        ![
+          "FORMULA",
+          "ROLLUP",
+          "UNIQUE_ID",
+          "CREATED_TIME",
+          "UPDATED_TIME",
+        ].includes(property.type)
+      )
+        values[property.id] =
+          window.prompt(`${property.name} 預設值`, "") || "";
+    });
+    const template = await save(`/api/databases/${database.id}/templates`, {
+      name,
+      values,
+    });
+    onChange({
+      ...database,
+      templates: [
+        ...database.templates.filter((item) => item.id !== template.id),
+        template,
+      ],
+    });
+  }
+  async function addAutomation() {
+    const name = window.prompt("規則名稱", "設定預設狀態");
+    if (!name?.trim()) return;
+    const trigger = window.prompt(
+      "觸發：ROW_CREATED、ROW_UPDATED",
+      "ROW_CREATED",
+    );
+    const action = window.prompt(
+      "動作：SET_PROPERTY、CREATE_ROW、NOTIFY",
+      "SET_PROPERTY",
+    );
+    if (
+      !trigger ||
+      !["ROW_CREATED", "ROW_UPDATED"].includes(trigger) ||
+      !action ||
+      !["SET_PROPERTY", "CREATE_ROW", "NOTIFY"].includes(action)
+    )
+      return setNotice("觸發或動作不正確");
+    let config: Record<string, unknown> = {};
+    if (action === "SET_PROPERTY") {
+      const propName = window.prompt(
+        `欄位：${database.properties.map((item) => item.name).join("、")}`,
+      );
+      const property = database.properties.find(
+        (item) => item.name === propName,
+      );
+      if (!property) return setNotice("找不到欄位");
+      config = {
+        propertyId: property.id,
+        value: window.prompt("設定值", "") || "",
+      };
+    } else if (action === "CREATE_ROW") {
+      const values: Record<string, unknown> = {};
+      for (const property of database.properties.filter(
+        (item) =>
+          ![
+            "FORMULA",
+            "ROLLUP",
+            "UNIQUE_ID",
+            "CREATED_TIME",
+            "UPDATED_TIME",
+          ].includes(item.type),
+      )) {
+        const value = window.prompt(
+          `新列的「${property.name}」預設值（留白即不設定）`,
+          "",
+        );
+        if (value)
+          values[property.id] =
+            property.type === "CHECKBOX" ? value === "true" : value;
+      }
+      if (!Object.keys(values).length)
+        return setNotice("請至少設定一個新列欄位值");
+      config = { values };
+    } else
+      config = {
+        title: name,
+        body: window.prompt("通知內容", "資料庫自動化已執行") || "",
+      };
+    const automation = await save(`/api/databases/${database.id}/automations`, {
+      name,
+      trigger,
+      action,
+      config,
+    });
+    onChange({
+      ...database,
+      automations: [automation, ...database.automations],
+    });
+    setNotice("已建立自動化規則");
+  }
+  function cell(row: DatabaseRow, property: DatabaseProperty) {
+    const value = row.values[property.id];
+    const config = objectOptions(property);
+    const update = (next: unknown) => {
+      if (editable) void saveRow(row, { ...row.values, [property.id]: next });
+    };
+    if (
+      [
+        "FORMULA",
+        "ROLLUP",
+        "UNIQUE_ID",
+        "CREATED_TIME",
+        "UPDATED_TIME",
+      ].includes(property.type)
+    )
+      return (
+        <span className="db-derived">
+          {calculatedValue(row, property, allDatabases) || "—"}
+        </span>
+      );
+    if (property.type === "RELATION") {
+      const target = allDatabases.find((item) => item.id === config.databaseId);
+      const selected = Array.isArray(value) ? value.map(String) : [];
+      return (
+        <select
+          className="db-cell-select"
+          disabled={!editable}
+          multiple
+          value={selected}
+          onChange={(event) =>
+            update(
+              Array.from(event.currentTarget.selectedOptions).map(
+                (option) => option.value,
+              ),
+            )
+          }
+        >
+          {target?.rows.map((targetRow) => (
+            <option key={targetRow.id} value={targetRow.id}>
+              {text(targetRow.values[target.properties[0]?.id || ""]) ||
+                targetRow.id.slice(-6)}
+            </option>
+          ))}
+        </select>
+      );
+    }
+    if (property.type === "FILES")
+      return (
+        <input
+          className="db-cell-input"
+          disabled={!editable}
+          defaultValue={stringArray(value).join(", ")}
+          placeholder="附件 ID，以逗號分隔"
+          onBlur={(event) =>
+            update(
+              event.currentTarget.value
+                .split(",")
+                .map((item) => item.trim())
+                .filter(Boolean),
+            )
+          }
+        />
+      );
+    if (property.type === "CHECKBOX")
+      return (
+        <input
+          className="db-checkbox"
+          disabled={!editable}
+          type="checkbox"
+          checked={Boolean(value)}
+          onChange={(event) => update(event.target.checked)}
+        />
+      );
+    if (["SELECT", "STATUS"].includes(property.type))
+      return (
+        <select
+          className="db-cell-select"
+          disabled={!editable}
+          value={text(value)}
+          onChange={(event) => update(event.target.value)}
+        >
+          <option value="">—</option>
+          {optionsFor(property).map((item) => (
+            <option key={item}>{item}</option>
+          ))}
+        </select>
+      );
+    if (property.type === "MULTI_SELECT")
+      return (
+        <select
+          className="db-cell-select"
+          disabled={!editable}
+          multiple
+          value={Array.isArray(value) ? value.map(String) : []}
+          onChange={(event) =>
+            update(
+              Array.from(event.currentTarget.selectedOptions).map(
+                (option) => option.value,
+              ),
+            )
+          }
+        >
+          {optionsFor(property).map((item) => (
+            <option key={item}>{item}</option>
+          ))}
+        </select>
+      );
+    const type =
+      property.type === "NUMBER"
+        ? "number"
+        : property.type === "DATE"
+          ? config.includeTime
+            ? "datetime-local"
+            : "date"
+          : property.type === "EMAIL"
+            ? "email"
+            : property.type === "URL"
+              ? "url"
+              : "text";
+    return (
+      <input
+        className="db-cell-input"
+        disabled={!editable}
+        type={type}
+        maxLength={
+          typeof config.maxLength === "number" ? config.maxLength : undefined
+        }
+        placeholder={
+          typeof config.placeholder === "string"
+            ? config.placeholder
+            : undefined
+        }
+        step={
+          property.type === "NUMBER"
+            ? String(1 / Math.pow(10, Number(config.precision || 0)))
+            : undefined
+        }
+        defaultValue={text(value)}
+        onBlur={(event) =>
+          update(
+            property.type === "NUMBER" && event.currentTarget.value !== ""
+              ? Number(event.currentTarget.value)
+              : event.currentTarget.value,
+          )
+        }
+      />
+    );
+  }
+  const grouping =
+    database.properties.find(
+      (property) => property.id === viewConfig.groupPropertyId,
+    ) ||
+    database.properties.find(
+      (property) => property.type === "STATUS" || property.type === "SELECT",
+    );
+  const date =
+    database.properties.find(
+      (property) => property.id === viewConfig.datePropertyId,
+    ) || database.properties.find((property) => property.type === "DATE");
+  const content =
+    activeView?.layout === "FORM" ? (
+      <form
+        className="db-form"
+        onSubmit={(event) => {
+          event.preventDefault();
+          void addRow(formValues).then(() => {
+            setFormValues({});
+            setNotice("表單已送出");
+          });
+        }}
+      >
+        {database.properties
+          .filter(
+            (property) =>
+              ![
+                "FORMULA",
+                "ROLLUP",
+                "UNIQUE_ID",
+                "CREATED_TIME",
+                "UPDATED_TIME",
+              ].includes(property.type),
+          )
+          .map((property) => (
+            <label key={property.id}>
+              {property.name}
+              {property.type === "CHECKBOX" ? (
+                <input
+                  disabled={!editable}
+                  type="checkbox"
+                  checked={Boolean(formValues[property.id])}
+                  onChange={(event) =>
+                    setFormValues({
+                      ...formValues,
+                      [property.id]: event.target.checked,
+                    })
+                  }
+                />
+              ) : ["SELECT", "STATUS"].includes(property.type) ? (
+                <select
+                  disabled={!editable}
+                  value={text(formValues[property.id])}
+                  onChange={(event) =>
+                    setFormValues({
+                      ...formValues,
+                      [property.id]: event.target.value,
+                    })
+                  }
+                >
+                  <option value="">—</option>
+                  {optionsFor(property).map((item) => (
+                    <option key={item}>{item}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  disabled={!editable}
+                  type={
+                    property.type === "DATE"
+                      ? "date"
+                      : property.type === "NUMBER"
+                        ? "number"
+                        : "text"
+                  }
+                  value={text(formValues[property.id])}
+                  onChange={(event) =>
+                    setFormValues({
+                      ...formValues,
+                      [property.id]: event.target.value,
+                    })
+                  }
+                />
+              )}
+            </label>
+          ))}
+        <button className="db-primary" disabled={!editable} type="submit">
+          新增一列
+        </button>
+      </form>
+    ) : activeView?.layout === "BOARD" && grouping ? (
+      <div className="db-board">
+        {optionsFor(grouping).map((status) => (
+          <section key={status}>
+            <header>
+              {status}
+              <span>
+                {
+                  rows.filter((row) => text(row.values[grouping.id]) === status)
+                    .length
+                }
+              </span>
+            </header>
+            {rows
+              .filter((row) => text(row.values[grouping.id]) === status)
+              .map((row) => (
+                <article key={row.id}>
+                  <strong>
+                    {text(row.values[database.properties[0]?.id || ""]) ||
+                      "未命名"}
+                  </strong>
+                  <small>
+                    {database.properties
+                      .filter(
+                        (property) =>
+                          property.id !== grouping.id &&
+                          property.id !== database.properties[0]?.id,
+                      )
+                      .slice(0, 3)
+                      .map(
+                        (property) =>
+                          `${property.name}: ${calculatedValue(row, property, allDatabases)}`,
+                      )
+                      .join(" · ")}
+                  </small>
+                </article>
+              ))}
+          </section>
+        ))}
+      </div>
+    ) : activeView?.layout === "CALENDAR" && date ? (
+      <div className="db-calendar">
+        {rows.map((row) => (
+          <article key={row.id}>
+            <time>{text(row.values[date.id]) || "未排定"}</time>
+            <strong>
+              {text(row.values[database.properties[0]?.id || ""]) || "未命名"}
+            </strong>
+          </article>
+        ))}
+      </div>
+    ) : activeView?.layout === "TIMELINE" && date ? (
+      <div className="db-timeline">
+        {rows.map((row) => (
+          <article key={row.id}>
+            <time>{text(row.values[date.id]) || "未排定"}</time>
+            <span />
+            <strong>
+              {text(row.values[database.properties[0]?.id || ""]) || "未命名"}
+            </strong>
+          </article>
+        ))}
+      </div>
+    ) : activeView?.layout === "GALLERY" ? (
+      <div className="db-gallery">
+        {rows.map((row) => (
+          <article key={row.id}>
+            <strong>
+              {text(row.values[database.properties[0]?.id || ""]) || "未命名"}
+            </strong>
+            {database.properties.slice(1, 5).map((property) => (
+              <p key={property.id}>
+                <span>{property.name}</span>
+                {calculatedValue(row, property, allDatabases) || "—"}
+              </p>
+            ))}
+          </article>
+        ))}
+      </div>
+    ) : activeView?.layout === "LIST" ? (
+      <div className="db-list">
+        {rows.map((row) => (
+          <article key={row.id}>
+            <span>◇</span>
+            <strong>
+              {text(row.values[database.properties[0]?.id || ""]) || "未命名"}
+            </strong>
+            <small>
+              {database.properties
+                .slice(1, 3)
+                .map((property) => calculatedValue(row, property, allDatabases))
+                .join(" · ")}
+            </small>
+          </article>
+        ))}
+      </div>
+    ) : (
+      <div className="database-table-wrap">
+        <table className="database-table">
+          <thead>
+            <tr>
+              {database.properties.map((property) => (
+                <th
+                  key={property.id}
+                  draggable={editable}
+                  onDragStart={() => setDraggedPropertyId(property.id)}
+                  onDragOver={(event) => editable && event.preventDefault()}
+                  onDrop={() => {
+                    if (draggedPropertyId)
+                      void reorder(
+                        "properties",
+                        draggedPropertyId,
+                        property.id,
+                      );
+                    setDraggedPropertyId(null);
+                  }}
+                >
+                  <span>
+                    {property.type === "STATUS"
+                      ? "◉"
+                      : property.type === "DATE"
+                        ? "◷"
+                        : property.type === "RELATION"
+                          ? "↗"
+                          : property.type === "FORMULA"
+                            ? "ƒ"
+                            : "Aa"}
+                  </span>
+                  {property.name}
+                  {editable && (
+                    <button
+                      className="db-delete-small"
+                      onClick={() =>
+                        setPendingAction({ kind: "property", property })
+                      }
+                      title={`刪除 ${property.name}`}
+                    >
+                      ×
+                    </button>
+                  )}
+                </th>
+              ))}
+              <th>
+                <button
+                  className="add-property"
+                  disabled={!editable}
+                  onClick={() => setShowColumnComposer(true)}
+                  title="新增欄位"
+                >
+                  ＋ 欄位
+                </button>
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr
+                key={row.id}
+                draggable={editable}
+                onDragStart={() => setDraggedRowId(row.id)}
+                onDragOver={(event) => editable && event.preventDefault()}
+                onDrop={() => {
+                  if (draggedRowId) void reorder("rows", draggedRowId, row.id);
+                  setDraggedRowId(null);
+                }}
+              >
+                {database.properties.map((property) => (
+                  <td key={property.id}>{cell(row, property)}</td>
+                ))}
+                <td>
+                  {editable && (
+                    <button
+                      className="db-delete-small"
+                      onClick={() => setPendingAction({ kind: "row", row })}
+                      title="刪除列"
+                    >
+                      ×
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!rows.length && (
+          <button
+            className="database-empty"
+            disabled={!editable}
+            onClick={() => void addRow()}
+          >
+            ＋ 新增第一列
+          </button>
+        )}
+      </div>
+    );
+  const pendingActionCopy = pendingAction
+    ? pendingAction.kind === "rollback-import"
+      ? {
+          title: "回復這次匯入？",
+          description: "這次匯入建立的所有列都會移除，且無法復原。",
+          confirmLabel: "回復匯入",
+        }
+      : pendingAction.kind === "row"
+        ? {
+            title: "刪除這一列？",
+            description: "這列會移至回收桶，可在資料庫的列回收桶中還原。",
+            confirmLabel: "移至回收桶",
+          }
+        : pendingAction.kind === "property"
+          ? {
+              title: `刪除欄位「${pendingAction.property.name}」？`,
+              description: "欄位會移至回收桶，列中的資料會保留並可還原。",
+              confirmLabel: "移至回收桶",
+            }
+          : pendingAction.kind === "view"
+            ? {
+                title: `刪除檢視「${pendingAction.view.name}」？`,
+                description: "此檢視的篩選、排序與版面設定將被移除。",
+                confirmLabel: "刪除檢視",
+              }
+            : pendingAction.kind === "database"
+              ? {
+                  title: `刪除資料庫「${database.name}」？`,
+                  description: "所有欄位、列、檢視、模板與自動化都會永久刪除。",
+                  confirmLabel: "永久刪除",
+                }
+              : pendingAction.kind === "template"
+                ? {
+                    title: `刪除模板「${pendingAction.template.name}」？`,
+                    description: "此模板將無法還原。",
+                    confirmLabel: "刪除模板",
+                  }
+                : {
+                    title: `刪除自動化「${pendingAction.automation.name}」？`,
+                    description: "此規則將停止執行且無法還原。",
+                    confirmLabel: "刪除自動化",
+                  }
+    : null;
+  function confirmPendingAction() {
+    const action = pendingAction;
+    if (!action) return;
+    setPendingAction(null);
+    if (action.kind === "rollback-import") void rollbackImport();
+    else if (action.kind === "row") void removeRow(action.row);
+    else if (action.kind === "property") void removeProperty(action.property);
+    else if (action.kind === "view") void removeView(action.view);
+    else if (action.kind === "database") void removeDatabase();
+    else if (action.kind === "template") void removeTemplate(action.template);
+    else void removeAutomation(action.automation);
+  }
+  return (
+    <section className="database-page">
+      <div className="database-title-row">
+        <span className="database-icon">{database.icon}</span>
+        <input
+          className="database-title"
+          defaultValue={database.name}
+          onBlur={(event) =>
+            patch(`/api/databases/${database.id}`, {
+              name: event.currentTarget.value,
+            }).then(() =>
+              onChange({ ...database, name: event.currentTarget.value }),
+            )
+          }
+        />
+      </div>
+      <div className="database-toolbar">
+        <div className="view-tabs">
+          {database.views.map((view) => (
+            <button
+              key={view.id}
+              className={
+                view.id === activeView?.id ? "view-tab active" : "view-tab"
+              }
+              onClick={() => setActiveId(view.id)}
+            >
+              {view.layout === "BOARD"
+                ? "▤"
+                : view.layout === "CALENDAR"
+                  ? "◷"
+                  : "▦"}{" "}
+              {view.name}
+            </button>
+          ))}
+          {editable && (
+            <button className="add-view" onClick={addView}>
+              ＋ 新增檢視
+            </button>
+          )}
+        </div>
+        <div className="database-actions">
+          <button onClick={() => setControls(!controls)}>篩選與排序</button>
+          {editable && (
+            <>
+              <button onClick={() => setShowColumnComposer(true)}>
+                ＋ 新增欄位
+              </button>
+              <button
+                className="button-secondary"
+                onClick={() => void togglePropertyTrash()}
+              >
+                ♻ 欄位回收桶
+              </button>
+              <button onClick={addTemplate}>模板</button>
+              <button onClick={addAutomation}>自動化</button>
+              <button onClick={saveView}>儲存檢視</button>
+              <button
+                disabled={!activeView}
+                onClick={() =>
+                  activeView &&
+                  setPendingAction({ kind: "view", view: activeView })
+                }
+              >
+                刪除檢視
+              </button>
+              <button className="db-primary" onClick={() => void addRow()}>
+                ＋ 新增列
+              </button>
+              <button
+                className="database-danger"
+                onClick={() => setPendingAction({ kind: "database" })}
+              >
+                刪除資料庫
+              </button>
+            </>
+          )}
+        </div>
+      </div>
+      {showColumnComposer && (
+        <form className="database-column-composer" onSubmit={addProperty}>
+          <div>
+            <strong>新增欄位</strong>
+            <span>欄位屬性會由伺服器驗證並與資料庫一同儲存。</span>
+          </div>
+          <input
+            value={propertyName}
+            onChange={(event) => setPropertyName(event.target.value)}
+            placeholder="欄位名稱，例如：負責人"
+            autoFocus
+            required
+          />
+          <select
+            value={propertyType}
+            onChange={(event) =>
+              setPropertyType(event.target.value as DatabasePropertyType)
+            }
+          >
+            {(
+              [
+                "TEXT",
+                "NUMBER",
+                "SELECT",
+                "MULTI_SELECT",
+                "STATUS",
+                "DATE",
+                "PERSON",
+                "FILES",
+                "CHECKBOX",
+                "URL",
+                "EMAIL",
+                "PHONE",
+                "RELATION",
+                "ROLLUP",
+                "FORMULA",
+              ] as DatabasePropertyType[]
+            ).map((type) => (
+              <option key={type} value={type}>
+                {labels[type]}
+              </option>
+            ))}
+          </select>
+          <div className="column-config">
+            <label>
+              說明
+              <input
+                value={propertyDescription}
+                onChange={(event) => setPropertyDescription(event.target.value)}
+                placeholder="欄位用途（選填）"
+                maxLength={300}
+              />
+            </label>
+            {["SELECT", "MULTI_SELECT", "STATUS", "FORMULA"].includes(
+              propertyType,
+            ) && (
+              <label>
+                {propertyType === "FORMULA" ? "公式" : "選項"}
+                <input
+                  value={propertyOptions}
+                  onChange={(event) => setPropertyOptions(event.target.value)}
+                  placeholder={
+                    propertyType === "FORMULA"
+                      ? "例如 {數量} * {單價}"
+                      : "以逗號分隔"
+                  }
+                />
+              </label>
+            )}
+            {["SELECT", "MULTI_SELECT", "STATUS"].includes(propertyType) && (
+              <label className="config-check">
+                <input
+                  type="checkbox"
+                  checked={allowCustomChoice}
+                  onChange={(event) =>
+                    setAllowCustomChoice(event.target.checked)
+                  }
+                />
+                允許匯入自訂選項
+              </label>
+            )}
+            {["TEXT", "URL", "EMAIL", "PHONE"].includes(propertyType) && (
+              <>
+                <label>
+                  提示文字
+                  <input
+                    value={propertyPlaceholder}
+                    onChange={(event) =>
+                      setPropertyPlaceholder(event.target.value)
+                    }
+                    placeholder="輸入時顯示的提示"
+                    maxLength={120}
+                  />
+                </label>
+                <label>
+                  最大字數
+                  <input
+                    type="number"
+                    min="1"
+                    max="10000"
+                    value={propertyMaxLength}
+                    onChange={(event) =>
+                      setPropertyMaxLength(event.target.value)
+                    }
+                    placeholder="預設 10000"
+                  />
+                </label>
+              </>
+            )}
+            {propertyType === "NUMBER" && (
+              <>
+                <label>
+                  格式
+                  <select
+                    value={numberFormat}
+                    onChange={(event) => setNumberFormat(event.target.value)}
+                  >
+                    <option value="number">數字</option>
+                    <option value="percent">百分比</option>
+                    <option value="currency">貨幣</option>
+                  </select>
+                </label>
+                <label>
+                  小數位數
+                  <input
+                    type="number"
+                    min="0"
+                    max="8"
+                    value={numberPrecision}
+                    onChange={(event) => setNumberPrecision(event.target.value)}
+                  />
+                </label>
+                {numberFormat === "currency" && (
+                  <label>
+                    幣別
+                    <input
+                      value={numberCurrency}
+                      onChange={(event) =>
+                        setNumberCurrency(event.target.value.toUpperCase())
+                      }
+                      maxLength={3}
+                      placeholder="TWD"
+                    />
+                  </label>
+                )}
+              </>
+            )}
+            {propertyType === "DATE" && (
+              <label className="config-check">
+                <input
+                  type="checkbox"
+                  checked={dateIncludeTime}
+                  onChange={(event) => setDateIncludeTime(event.target.checked)}
+                />
+                包含時間
+              </label>
+            )}
+            {propertyType === "PERSON" && (
+              <label className="config-check">
+                <input
+                  type="checkbox"
+                  checked={personMultiple}
+                  onChange={(event) => setPersonMultiple(event.target.checked)}
+                />
+                允許多位成員
+              </label>
+            )}
+            {propertyType === "FILES" && (
+              <label>
+                檔案上限
+                <input
+                  type="number"
+                  min="1"
+                  max="500"
+                  value={fileLimit}
+                  onChange={(event) => setFileLimit(event.target.value)}
+                />
+              </label>
+            )}
+            {propertyType === "CHECKBOX" && (
+              <label>
+                核取標籤
+                <input
+                  value={propertyPlaceholder}
+                  onChange={(event) =>
+                    setPropertyPlaceholder(event.target.value)
+                  }
+                  placeholder="例如：已驗證"
+                  maxLength={120}
+                />
+              </label>
+            )}
+            {propertyType === "RELATION" && (
+              <label>
+                關聯資料庫
+                <select
+                  value={relatedDatabaseId}
+                  onChange={(event) => setRelatedDatabaseId(event.target.value)}
+                  required
+                >
+                  <option value="">選擇關聯資料庫</option>
+                  {allDatabases
+                    .filter((item) => item.id !== database.id)
+                    .map((item) => (
+                      <option key={item.id} value={item.id}>
+                        {item.icon} {item.name}
+                      </option>
+                    ))}
+                </select>
+              </label>
+            )}
+            {propertyType === "ROLLUP" && (
+              <>
+                <label>
+                  關聯欄位
+                  <select
+                    value={rollupRelationId}
+                    onChange={(event) => {
+                      setRollupRelationId(event.target.value);
+                      setRollupTargetPropertyId("");
+                    }}
+                    required
+                  >
+                    <option value="">選擇關聯欄位</option>
+                    {database.properties
+                      .filter((property) => property.type === "RELATION")
+                      .map((property) => (
+                        <option key={property.id} value={property.id}>
+                          {property.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label>
+                  彙總欄位
+                  <select
+                    value={rollupTargetPropertyId}
+                    onChange={(event) =>
+                      setRollupTargetPropertyId(event.target.value)
+                    }
+                    required
+                  >
+                    <option value="">選擇欄位</option>
+                    {allDatabases
+                      .find(
+                        (item) =>
+                          item.id ===
+                          String(
+                            objectOptions(
+                              database.properties.find(
+                                (property) => property.id === rollupRelationId,
+                              ) || ({ options: null } as DatabaseProperty),
+                            ).databaseId || "",
+                          ),
+                      )
+                      ?.properties.map((property) => (
+                        <option key={property.id} value={property.id}>
+                          {property.name}
+                        </option>
+                      ))}
+                  </select>
+                </label>
+                <label>
+                  運算
+                  <select
+                    value={rollupOperation}
+                    onChange={(event) => setRollupOperation(event.target.value)}
+                  >
+                    <option value="SHOW_ORIGINAL">顯示原始值</option>
+                    <option value="COUNT">計數</option>
+                    <option value="SUM">加總</option>
+                  </select>
+                </label>
+              </>
+            )}
+          </div>
+          <button className="db-primary" type="submit">
+            新增欄位
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              resetPropertyComposer();
+              setShowColumnComposer(false);
+            }}
+          >
+            取消
+          </button>
+        </form>
+      )}
+      {database.templates.length > 0 && (
+        <div className="template-row">
+          模板：
+          {database.templates.map((template) => (
+            <span key={template.id}>
+              <button onClick={() => void addRow(template.values)}>
+                {template.name}
+              </button>
+              {editable && (
+                <button
+                  className="template-delete"
+                  onClick={() =>
+                    setPendingAction({ kind: "template", template })
+                  }
+                  title={`刪除 ${template.name}`}
+                >
+                  ×
+                </button>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+      {controls && (
+        <div className="database-controls">
+          <label>
+            篩選
+            <select
+              value={filter.propertyId || ""}
+              onChange={(event) =>
+                setFilter({
+                  ...filter,
+                  propertyId: event.target.value || undefined,
+                  operator: undefined,
+                  value: "",
+                })
+              }
+            >
+              <option value="">所有紀錄</option>
+              {database.properties.map((property) => (
+                <option key={property.id} value={property.id}>
+                  {property.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {filter.propertyId && (
+            <>
+              <label>
+                條件
+                <select
+                  value={filter.operator || "contains"}
+                  onChange={(event) =>
+                    setFilter({
+                      ...filter,
+                      operator: event.target.value as Filter["operator"],
+                    })
+                  }
+                >
+                  <option value="contains">包含</option>
+                  <option value="not_contains">不包含</option>
+                  <option value="equals">等於</option>
+                  <option value="not_equals">不等於</option>
+                  <option value="is_empty">為空白</option>
+                  <option value="is_not_empty">不為空白</option>
+                  <option value="greater_than">大於（數字）</option>
+                  <option value="less_than">小於（數字）</option>
+                  <option value="on_or_after">日期晚於或等於</option>
+                  <option value="on_or_before">日期早於或等於</option>
+                </select>
+              </label>
+              {!(["is_empty", "is_not_empty"] as Filter["operator"][]).includes(
+                filter.operator,
+              ) && (
+                <label>
+                  值
+                  <input
+                    type={
+                      (
+                        ["on_or_after", "on_or_before"] as Filter["operator"][]
+                      ).includes(filter.operator)
+                        ? "date"
+                        : (
+                              [
+                                "greater_than",
+                                "less_than",
+                              ] as Filter["operator"][]
+                            ).includes(filter.operator)
+                          ? "number"
+                          : "text"
+                    }
+                    value={filter.value || ""}
+                    onChange={(event) =>
+                      setFilter({ ...filter, value: event.target.value })
+                    }
+                  />
+                </label>
+              )}
+            </>
+          )}
+          <label>
+            排序
+            <select
+              value={sort.propertyId || ""}
+              onChange={(event) =>
+                setSort({
+                  ...sort,
+                  propertyId: event.target.value || undefined,
+                })
+              }
+            >
+              <option value="">預設順序</option>
+              {database.properties.map((property) => (
+                <option key={property.id} value={property.id}>
+                  {property.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {sort.propertyId && (
+            <label>
+              順序
+              <select
+                value={sort.direction || "asc"}
+                onChange={(event) =>
+                  setSort({
+                    ...sort,
+                    direction: event.target.value as Sort["direction"],
+                  })
+                }
+              >
+                <option value="asc">遞增</option>
+                <option value="desc">遞減</option>
+              </select>
+            </label>
+          )}
+          {activeView?.layout === "BOARD" && (
+            <label>
+              看板分組
+              <select
+                value={String(viewConfig.groupPropertyId || grouping?.id || "")}
+                onChange={(event) =>
+                  setViewConfig({
+                    ...viewConfig,
+                    groupPropertyId: event.target.value || undefined,
+                  })
+                }
+              >
+                <option value="">自動選擇</option>
+                {database.properties
+                  .filter(
+                    (property) =>
+                      property.type === "STATUS" || property.type === "SELECT",
+                  )
+                  .map((property) => (
+                    <option key={property.id} value={property.id}>
+                      {property.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          )}
+          {(["CALENDAR", "TIMELINE"] as DatabaseViewLayout[]).includes(
+            activeView?.layout || "TABLE",
+          ) && (
+            <label>
+              日期欄位
+              <select
+                value={String(viewConfig.datePropertyId || date?.id || "")}
+                onChange={(event) =>
+                  setViewConfig({
+                    ...viewConfig,
+                    datePropertyId: event.target.value || undefined,
+                  })
+                }
+              >
+                <option value="">自動選擇</option>
+                {database.properties
+                  .filter((property) => property.type === "DATE")
+                  .map((property) => (
+                    <option key={property.id} value={property.id}>
+                      {property.name}
+                    </option>
+                  ))}
+              </select>
+            </label>
+          )}
+          <span>{notice}</span>
+        </div>
+      )}
+      {controls && (
+        <section className="db-filter-builder">
+          <strong>進階篩選群組</strong>
+          <FilterBuilder
+            node={filter}
+            properties={database.properties}
+            onChange={setFilter}
+          />
+          <strong>組合排序</strong>
+          <div className="db-sort-list">
+            {sorts.map((item, index) => (
+              <span key={index}>
+                <select
+                  value={item.propertyId || ""}
+                  onChange={(event) =>
+                    setSorts((current) =>
+                      current.map((value, valueIndex) =>
+                        valueIndex === index
+                          ? {
+                              ...value,
+                              propertyId: event.target.value || undefined,
+                            }
+                          : value,
+                      ),
+                    )
+                  }
+                >
+                  <option value="">選擇欄位</option>
+                  {database.properties.map((property) => (
+                    <option key={property.id} value={property.id}>
+                      {property.name}
+                    </option>
+                  ))}
+                </select>
+                <select
+                  value={item.direction || "asc"}
+                  onChange={(event) =>
+                    setSorts((current) =>
+                      current.map((value, valueIndex) =>
+                        valueIndex === index
+                          ? {
+                              ...value,
+                              direction: event.target
+                                .value as Sort["direction"],
+                            }
+                          : value,
+                      ),
+                    )
+                  }
+                >
+                  <option value="asc">遞增</option>
+                  <option value="desc">遞減</option>
+                </select>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setSorts((current) =>
+                      current.filter((_, valueIndex) => valueIndex !== index),
+                    )
+                  }
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+            <button
+              type="button"
+              onClick={() =>
+                setSorts((current) => [...current, { direction: "asc" }])
+              }
+            >
+              ＋ 次要排序
+            </button>
+          </div>
+        </section>
+      )}
+      {content}
+      {loadingRows && <p className="hint">正在載入資料庫列…</p>}
+      {nextRowCursor && (
+        <button
+          className="button-secondary database-bottom-add"
+          type="button"
+          disabled={loadingRows}
+          onClick={() => void loadMoreRows()}
+        >
+          {loadingRows ? "載入中…" : "載入更多列"}
+        </button>
+      )}
+      {
+        <div className="db-import-export">
+          <button type="button" onClick={exportCsv}>
+            ⇩ 匯出 CSV
+          </button>
+          {editable && (
+            <>
+              <button type="button" onClick={() => importRef.current?.click()}>
+                ⇧ 匯入 CSV
+              </button>
+              <input
+                ref={importRef}
+                hidden
+                type="file"
+                accept=".csv,text/csv"
+                onChange={(event) => {
+                  const file = event.currentTarget.files?.[0];
+                  if (file) void importCsv(file);
+                }}
+              />
+            </>
+          )}
+        </div>
+      }
+      {importJob && (
+        <div className="db-import-status">
+          <span>
+            匯入狀態：{importJob.status}（{importJob.processedRows}/
+            {importJob.totalRows}）
+          </span>
+          {importJob.status === "FAILED" && (
+            <>
+              <a
+                href={`/api/databases/${database.id}/rows/import?jobId=${encodeURIComponent(importJob.id)}&download=errors`}
+              >
+                下載錯誤 CSV
+              </a>
+              {editable && (
+                <button type="button" onClick={() => void retryImport()}>
+                  重新嘗試
+                </button>
+              )}
+            </>
+          )}
+          {importJob.status === "COMPLETED" && editable && (
+            <button
+              type="button"
+              onClick={() => setPendingAction({ kind: "rollback-import" })}
+            >
+              回復這次匯入
+            </button>
+          )}
+        </div>
+      )}
+      {editable && (
+        <>
+          <button className="database-bottom-add" onClick={() => void addRow()}>
+            ＋ 新增列
+          </button>
+          <button
+            className="button-secondary database-bottom-add"
+            onClick={() => void toggleRowTrash()}
+          >
+            ♻ 已刪除列
+          </button>
+        </>
+      )}
+      {showRowTrash && (
+        <section className="module-recycle">
+          <h2>資料庫列回收桶</h2>
+          {trashedRows.length ? (
+            trashedRows.map((row) => (
+              <article key={row.id}>
+                <span>
+                  <strong>
+                    {text(row.values[database.properties[0]?.id || ""]) ||
+                      "未命名紀錄"}
+                  </strong>
+                  <small>
+                    刪除於 {new Date(row.deletedAt).toLocaleString("zh-TW")}
+                  </small>
+                </span>
+                {editable && (
+                  <button
+                    className="collab-primary"
+                    onClick={() => void restoreRow(row)}
+                  >
+                    還原
+                  </button>
+                )}
+              </article>
+            ))
+          ) : (
+            <p className="hint">回收桶是空的。</p>
+          )}
+        </section>
+      )}
+      {showPropertyTrash && (
+        <section className="module-recycle">
+          <h2>資料庫欄位回收桶</h2>
+          {trashedProperties.length ? (
+            trashedProperties.map((property) => (
+              <article key={property.id}>
+                <span>
+                  <strong>{property.name}</strong>
+                  <small>
+                    刪除於{" "}
+                    {new Date(property.deletedAt).toLocaleString("zh-TW")}
+                  </small>
+                </span>
+                {editable && (
+                  <button
+                    className="collab-primary"
+                    onClick={() => void restoreProperty(property)}
+                  >
+                    還原
+                  </button>
+                )}
+              </article>
+            ))
+          ) : (
+            <p className="hint">回收桶是空的。</p>
+          )}
+        </section>
+      )}
+      {database.automations.length > 0 && (
+        <div className="automation-state">
+          ⚡ 自動化：
+          {database.automations.map((automation) => (
+            <span key={automation.id}>
+              {automation.name}
+              {editable && (
+                <button
+                  className="template-delete"
+                  onClick={() =>
+                    setPendingAction({ kind: "automation", automation })
+                  }
+                  title={`刪除 ${automation.name}`}
+                >
+                  ×
+                </button>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
+      {pendingAction && pendingActionCopy && (
+        <ConfirmDialog
+          title={pendingActionCopy.title}
+          description={pendingActionCopy.description}
+          confirmLabel={pendingActionCopy.confirmLabel}
+          destructive
+          onCancel={() => setPendingAction(null)}
+          onConfirm={confirmPendingAction}
+        />
+      )}
+    </section>
+  );
 }
