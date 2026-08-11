@@ -150,6 +150,7 @@ docker compose exec backup restore-drill <backup-id>
 2. 建立供 GitHub Actions 使用的 Tailscale Workload Identity，並將其 Client ID 與 Audience 分別建立為 GitHub repository secrets：`TS_OAUTH_CLIENT_ID`、`TS_AUDIENCE`。
 3. 設定 GitHub Actions variable `DEPLOY_USE_TAILSCALE=true`；`DEPLOY_HOST` 填入該伺服器的 Tailscale IP 或 MagicDNS 名稱，其餘 `DEPLOY_*` SSH secrets 仍需照表設定。
 4. 用相同主機名稱或 IP 產生並核對 host key，例如 `ssh-keyscan -H <DEPLOY_HOST>`，再把輸出存為 `DEPLOY_KNOWN_HOSTS`。請在另一個可信通道核對指紋，避免接受錯誤的主機金鑰。
+5. 此 workflow 使用標準 OpenSSH 金鑰。若部署伺服器啟用了 Tailscale SSH，請在伺服器執行 `sudo tailscale set --ssh=false`，讓 TCP 22 交給 OpenSSH 處理。這不會關閉 Tailscale 網路或標準 SSH；Tailscale SSH 會攔截連線，且 `tag:ci` 這類非人類節點不能登入 user-owned 伺服器。
 
 Workflow 會以 `tag:ci` 建立暫時節點、確認能 ping 到目標後才開始 SSH，工作結束即自動移除該節點。請勿將 Tailscale auth key、OAuth secret 或 SSH 私鑰提交到 Git；此 workflow 使用 GitHub 的 OIDC token 與 Tailscale Workload Identity，不需要長期 Tailscale auth key。
 
