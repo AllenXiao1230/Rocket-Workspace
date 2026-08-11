@@ -2,7 +2,7 @@
 
 import { FormEvent, useEffect, useRef, useState } from "react";
 
-type DialogField = {
+export type FormDialogField = {
   name: string;
   label: string;
   placeholder?: string;
@@ -17,8 +17,8 @@ type FormDialogProps = {
   title: string;
   description: string;
   submitLabel: string;
-  fields: DialogField[];
-  initialValues?: Record<string, string>;
+  fields: FormDialogField[];
+  initialValues?: Partial<Record<string, string>>;
   onCancel: () => void;
   onSubmit: (
     values: Record<string, string>,

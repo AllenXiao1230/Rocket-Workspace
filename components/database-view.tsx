@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { evaluateFormula } from "@/lib/formula";
 import { parseCsv, toCsv } from "@/lib/csv";
 import { ConfirmDialog } from "@/components/confirm-dialog";
-import { FormDialog } from "@/components/form-dialog";
+import { FormDialog, type FormDialogField } from "@/components/form-dialog";
 
 export type DatabasePropertyType =
   | "TEXT"
@@ -88,7 +88,26 @@ type PendingDatabaseAction =
   | { kind: "database" }
   | { kind: "template"; template: DatabaseTemplate }
   | { kind: "automation"; automation: DatabaseAutomation };
-type CreationDialog = "view" | "template";
+type CreationDialog =
+  | "view"
+  | "template"
+  | "automation-basics"
+  | "automation-property"
+  | "automation-row"
+  | "automation-notify";
+type AutomationDraft = {
+  name: string;
+  trigger: "ROW_CREATED" | "ROW_UPDATED";
+  action: "SET_PROPERTY" | "CREATE_ROW" | "NOTIFY";
+};
+type CreationDialogConfig = {
+  title: string;
+  description: string;
+  submitLabel: string;
+  initialValues: Partial<Record<string, string>>;
+  fields: FormDialogField[];
+  onSubmit: (values: Record<string, string>) => boolean | Promise<boolean>;
+};
 
 type Filter = {
   propertyId?: string;
@@ -448,6 +467,8 @@ export function DatabaseTable({
   const [creationDialog, setCreationDialog] = useState<CreationDialog | null>(
     null,
   );
+  const [automationDraft, setAutomationDraft] =
+    useState<AutomationDraft | null>(null);
   const [formValues, setFormValues] = useState<Record<string, unknown>>({});
   const [showColumnComposer, setShowColumnComposer] = useState(false);
   const [propertyName, setPropertyName] = useState("");
@@ -1253,76 +1274,93 @@ export function DatabaseTable({
       return false;
     }
   }
-  async function addAutomation() {
-    const name = window.prompt("規則名稱", "設定預設狀態");
-    if (!name?.trim()) return;
-    const trigger = window.prompt(
-      "觸發：ROW_CREATED、ROW_UPDATED",
-      "ROW_CREATED",
-    );
-    const action = window.prompt(
-      "動作：SET_PROPERTY、CREATE_ROW、NOTIFY",
-      "SET_PROPERTY",
-    );
+  function startAutomation(values: Record<string, string>) {
+    const name = values.name.trim();
+    const trigger = values.trigger as AutomationDraft["trigger"];
+    const action = values.action as AutomationDraft["action"];
     if (
-      !trigger ||
+      !name ||
       !["ROW_CREATED", "ROW_UPDATED"].includes(trigger) ||
-      !action ||
       !["SET_PROPERTY", "CREATE_ROW", "NOTIFY"].includes(action)
-    )
-      return setNotice("觸發或動作不正確");
-    let config: Record<string, unknown> = {};
-    if (action === "SET_PROPERTY") {
-      const propName = window.prompt(
-        `欄位：${database.properties.map((item) => item.name).join("、")}`,
-      );
-      const property = database.properties.find(
-        (item) => item.name === propName,
-      );
-      if (!property) return setNotice("找不到欄位");
-      config = {
-        propertyId: property.id,
-        value: window.prompt("設定值", "") || "",
-      };
-    } else if (action === "CREATE_ROW") {
-      const values: Record<string, unknown> = {};
-      for (const property of database.properties.filter(
-        (item) =>
-          ![
-            "FORMULA",
-            "ROLLUP",
-            "UNIQUE_ID",
-            "CREATED_TIME",
-            "UPDATED_TIME",
-          ].includes(item.type),
-      )) {
-        const value = window.prompt(
-          `新列的「${property.name}」預設值（留白即不設定）`,
-          "",
-        );
-        if (value)
-          values[property.id] =
-            property.type === "CHECKBOX" ? value === "true" : value;
+    ) {
+      setNotice("請輸入規則名稱並選擇觸發與動作");
+      return false;
+    }
+    setAutomationDraft({ name, trigger, action });
+    setCreationDialog(
+      action === "SET_PROPERTY"
+        ? "automation-property"
+        : action === "CREATE_ROW"
+          ? "automation-row"
+          : "automation-notify",
+    );
+    return false;
+  }
+  async function finishAutomation(values: Record<string, string>) {
+    if (!automationDraft) return false;
+    let config: Record<string, unknown>;
+    if (automationDraft.action === "SET_PROPERTY") {
+      if (!values.propertyId) {
+        setNotice("請選擇要設定的欄位");
+        return false;
       }
-      if (!Object.keys(values).length)
-        return setNotice("請至少設定一個新列欄位值");
-      config = { values };
-    } else
+      config = { propertyId: values.propertyId, value: values.value || "" };
+    } else if (automationDraft.action === "CREATE_ROW") {
+      const rowValues = Object.fromEntries(
+        database.properties
+          .filter(
+            (property) =>
+              ![
+                "FORMULA",
+                "ROLLUP",
+                "UNIQUE_ID",
+                "CREATED_TIME",
+                "UPDATED_TIME",
+              ].includes(property.type),
+          )
+          .flatMap((property) => {
+            const value = values[`property-${property.id}`];
+            if (!value) return [];
+            return [
+              [
+                property.id,
+                property.type === "CHECKBOX" ? value === "true" : value,
+              ],
+            ];
+          }),
+      );
+      if (!Object.keys(rowValues).length) {
+        setNotice("請至少設定一個新列欄位值");
+        return false;
+      }
+      config = { values: rowValues };
+    } else {
       config = {
-        title: name,
-        body: window.prompt("通知內容", "資料庫自動化已執行") || "",
+        title: automationDraft.name,
+        body: values.body.trim() || "資料庫自動化已執行",
       };
-    const automation = await save(`/api/databases/${database.id}/automations`, {
-      name,
-      trigger,
-      action,
-      config,
-    });
-    onChange({
-      ...database,
-      automations: [automation, ...database.automations],
-    });
-    setNotice("已建立自動化規則");
+    }
+    try {
+      const automation = await save(
+        `/api/databases/${database.id}/automations`,
+        {
+          name: automationDraft.name,
+          trigger: automationDraft.trigger,
+          action: automationDraft.action,
+          config,
+        },
+      );
+      onChange({
+        ...database,
+        automations: [automation, ...database.automations],
+      });
+      setAutomationDraft(null);
+      setNotice("已建立自動化規則");
+      return true;
+    } catch {
+      setNotice("無法建立自動化規則");
+      return false;
+    }
   }
   function cell(row: DatabaseRow, property: DatabaseProperty) {
     const value = row.values[property.id];
@@ -1757,6 +1795,160 @@ export function DatabaseTable({
         )}
       </div>
     );
+  const writableAutomationProperties = database.properties.filter(
+    (property) =>
+      ![
+        "FORMULA",
+        "ROLLUP",
+        "UNIQUE_ID",
+        "CREATED_TIME",
+        "UPDATED_TIME",
+      ].includes(property.type),
+  );
+  const creationDialogConfig: CreationDialogConfig | null = (() => {
+    if (creationDialog === "view")
+      return {
+        title: "新增檢視",
+        description: "選擇版面後，會套用目前的篩選與排序條件。",
+        submitLabel: "新增檢視",
+        initialValues: { name: "新檢視", layout: "TABLE" },
+        fields: [
+          {
+            name: "name",
+            label: "檢視名稱",
+            required: true,
+            placeholder: "例如：本週待辦",
+          },
+          {
+            name: "layout",
+            label: "版面",
+            type: "select" as const,
+            required: true,
+            options: layouts.map((layout) => ({
+              value: layout,
+              label: layout,
+            })),
+          },
+        ] satisfies FormDialogField[],
+        onSubmit: addView,
+      };
+    if (creationDialog === "template")
+      return {
+        title: "新增資料庫模板",
+        description: "設定建立新列時可套用的預設值；留白代表使用空值。",
+        submitLabel: "建立模板",
+        initialValues: { name: "新模板" },
+        fields: [
+          {
+            name: "name",
+            label: "模板名稱",
+            required: true,
+            placeholder: "例如：標準工作項目",
+          },
+          ...writableAutomationProperties.map((property) => ({
+            name: `property-${property.id}`,
+            label: `${property.name} 預設值`,
+            placeholder: labels[property.type],
+          })),
+        ] satisfies FormDialogField[],
+        onSubmit: addTemplate,
+      };
+    if (creationDialog === "automation-basics")
+      return {
+        title: "新增自動化規則",
+        description: "先選擇觸發時機與要執行的動作，下一步再設定動作內容。",
+        submitLabel: "下一步",
+        initialValues: {
+          name: "設定預設狀態",
+          trigger: "ROW_CREATED",
+          action: "SET_PROPERTY",
+        },
+        fields: [
+          { name: "name", label: "規則名稱", required: true },
+          {
+            name: "trigger",
+            label: "觸發時機",
+            type: "select" as const,
+            required: true,
+            options: [
+              { value: "ROW_CREATED", label: "建立列時" },
+              { value: "ROW_UPDATED", label: "更新列時" },
+            ],
+          },
+          {
+            name: "action",
+            label: "動作",
+            type: "select" as const,
+            required: true,
+            options: [
+              { value: "SET_PROPERTY", label: "設定欄位值" },
+              { value: "CREATE_ROW", label: "建立新列" },
+              { value: "NOTIFY", label: "發送通知" },
+            ],
+          },
+        ] satisfies FormDialogField[],
+        onSubmit: startAutomation,
+      };
+    if (creationDialog === "automation-property")
+      return {
+        title: "設定自動化欄位",
+        description: `規則「${automationDraft?.name || ""}」會設定所選欄位。`,
+        submitLabel: "建立規則",
+        initialValues: {},
+        fields: [
+          {
+            name: "propertyId",
+            label: "要設定的欄位",
+            type: "select" as const,
+            required: true,
+            options: database.properties.map((property) => ({
+              value: property.id,
+              label: property.name,
+            })),
+          },
+          { name: "value", label: "設定值（可留空）" },
+        ] satisfies FormDialogField[],
+        onSubmit: finishAutomation,
+      };
+    if (creationDialog === "automation-row")
+      return {
+        title: "設定新列預設值",
+        description: `規則「${automationDraft?.name || ""}」至少需要一個欄位值。`,
+        submitLabel: "建立規則",
+        initialValues: {},
+        fields: writableAutomationProperties.map((property) =>
+          property.type === "CHECKBOX"
+            ? {
+                name: `property-${property.id}`,
+                label: `${property.name} 預設值`,
+                type: "select" as const,
+                options: [
+                  { value: "", label: "不設定" },
+                  { value: "true", label: "是" },
+                  { value: "false", label: "否" },
+                ],
+              }
+            : {
+                name: `property-${property.id}`,
+                label: `${property.name} 預設值`,
+                placeholder: labels[property.type],
+              },
+        ) satisfies FormDialogField[],
+        onSubmit: finishAutomation,
+      };
+    if (creationDialog === "automation-notify")
+      return {
+        title: "設定通知內容",
+        description: `規則「${automationDraft?.name || ""}」觸發時會建立站內通知。`,
+        submitLabel: "建立規則",
+        initialValues: { body: "資料庫自動化已執行" },
+        fields: [
+          { name: "body", label: "通知內容", required: true },
+        ] satisfies FormDialogField[],
+        onSubmit: finishAutomation,
+      };
+    return null;
+  })();
   const pendingActionCopy = pendingAction
     ? pendingAction.kind === "rollback-import"
       ? {
@@ -1871,7 +2063,9 @@ export function DatabaseTable({
               <button onClick={() => setCreationDialog("template")}>
                 模板
               </button>
-              <button onClick={addAutomation}>自動化</button>
+              <button onClick={() => setCreationDialog("automation-basics")}>
+                自動化
+              </button>
               <button onClick={saveView}>儲存檢視</button>
               <button
                 disabled={!activeView}
@@ -2619,68 +2813,19 @@ export function DatabaseTable({
           onConfirm={confirmPendingAction}
         />
       )}
-      {creationDialog && (
+      {creationDialog && creationDialogConfig && (
         <FormDialog
           key={creationDialog}
-          title={creationDialog === "view" ? "新增檢視" : "新增資料庫模板"}
-          description={
-            creationDialog === "view"
-              ? "選擇版面後，會套用目前的篩選與排序條件。"
-              : "設定建立新列時可套用的預設值；留白代表使用空值。"
-          }
-          submitLabel={creationDialog === "view" ? "新增檢視" : "建立模板"}
-          fields={
-            creationDialog === "view"
-              ? [
-                  {
-                    name: "name",
-                    label: "檢視名稱",
-                    required: true,
-                    placeholder: "例如：本週待辦",
-                  },
-                  {
-                    name: "layout",
-                    label: "版面",
-                    type: "select" as const,
-                    required: true,
-                    options: layouts.map((layout) => ({
-                      value: layout,
-                      label: layout,
-                    })),
-                  },
-                ]
-              : [
-                  {
-                    name: "name",
-                    label: "模板名稱",
-                    required: true,
-                    placeholder: "例如：標準工作項目",
-                  },
-                  ...database.properties
-                    .filter(
-                      (property) =>
-                        ![
-                          "FORMULA",
-                          "ROLLUP",
-                          "UNIQUE_ID",
-                          "CREATED_TIME",
-                          "UPDATED_TIME",
-                        ].includes(property.type),
-                    )
-                    .map((property) => ({
-                      name: `property-${property.id}`,
-                      label: `${property.name} 預設值`,
-                      placeholder: labels[property.type],
-                    })),
-                ]
-          }
-          initialValues={
-            creationDialog === "view"
-              ? { name: "新檢視", layout: "TABLE" }
-              : { name: "新模板" }
-          }
-          onCancel={() => setCreationDialog(null)}
-          onSubmit={creationDialog === "view" ? addView : addTemplate}
+          title={creationDialogConfig.title}
+          description={creationDialogConfig.description}
+          submitLabel={creationDialogConfig.submitLabel}
+          fields={creationDialogConfig.fields}
+          initialValues={creationDialogConfig.initialValues}
+          onCancel={() => {
+            setCreationDialog(null);
+            setAutomationDraft(null);
+          }}
+          onSubmit={creationDialogConfig.onSubmit}
         />
       )}
     </section>
