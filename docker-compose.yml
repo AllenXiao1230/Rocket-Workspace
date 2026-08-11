@@ -9,6 +9,7 @@ services:
     environment:
       WORKSPACE_CONTENT_DIR: /workspace-data
       BACKUP_STATUS_DIR: /backup-status
+      BACKUP_MAX_AGE_HOURS: ${BACKUP_MAX_AGE_HOURS:-48}
     command: sh -c "pnpm db:deploy && pnpm db:seed && pnpm documents:sync && pnpm start"
     volumes: ["./workspace-data:/workspace-data", "./backups/status:/backup-status:ro"]
     ports: ["3000:3000"]
@@ -16,6 +17,7 @@ services:
       postgres: { condition: service_healthy }
       redis: { condition: service_started }
       minio-init: { condition: service_completed_successfully }
+      backup: { condition: service_started }
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3000/api/health"]

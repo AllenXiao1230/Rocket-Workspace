@@ -12,9 +12,12 @@ test("health endpoint reports every required service readiness", async ({ reques
       redis: "ok",
       collaboration: "ok",
       scheduler: "ok",
+      backup: { status: "ok" },
     },
   });
   expect(body.checks.migration).toMatch(/^\d{14}_.+/);
+  expect(body.checks.backup.id).toMatch(/^\d{8}T\d{6}Z$/);
+  expect(body.checks.backup.ageMinutes).toEqual(expect.any(Number));
 });
 
 test("liveness endpoint stays independent of readiness dependencies", async ({

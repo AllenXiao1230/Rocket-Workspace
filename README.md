@@ -50,7 +50,7 @@
 
 4. 開啟 `http://localhost:3000`，以 bootstrap 管理員帳號登入。
 
-服務就緒探針為 `http://localhost:3000/api/health`：它只回傳 `ok` 或 `degraded`，並確認 PostgreSQL、MinIO、Redis、協作服務、scheduler 心跳與 migration 版本；不會洩漏帳號或設定內容。容器存活探針為 `http://localhost:3000/api/health/live`，不依賴外部服務。
+服務就緒探針為 `http://localhost:3000/api/health`：它只回傳 `ok` 或 `degraded`，並確認 PostgreSQL、MinIO、Redis、協作服務、scheduler 心跳、migration 版本與最近成功備份的新鮮度；不會洩漏帳號或設定內容。容器存活探針為 `http://localhost:3000/api/health/live`，不依賴外部服務。
 
 首次啟動會建立 `Rocket Workspace` 與範例專案。MinIO 管理介面僅供基礎設施管理，位於 `http://localhost:9001`；請使用 `.env` 中的 `MINIO_ACCESS_KEY` 與 `MINIO_SECRET_KEY` 登入。
 
@@ -86,7 +86,7 @@ backups：資料庫、Markdown 與附件備份
 
 ## 備份與還原驗證
 
-備份服務啟動後會先執行一次，之後依 `BACKUP_INTERVAL_HOURS`（預設 24）排程，並依 `BACKUP_RETENTION_DAYS`（預設 14）保留。檔案存於：
+備份服務啟動後會先執行一次，之後依 `BACKUP_INTERVAL_HOURS`（預設 24）排程，並依 `BACKUP_RETENTION_DAYS`（預設 14）保留。readiness 會確認 `last-success.txt` 在 `BACKUP_MAX_AGE_HOURS`（預設 48）內；超過此上限時會回傳 `503` 以通知維運人員。檔案存於：
 
 | 路徑                   | 內容                             |
 | ---------------------- | -------------------------------- |

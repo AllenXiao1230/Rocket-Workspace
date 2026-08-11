@@ -4,13 +4,14 @@ import { attachmentBucket, HeadBucketCommand, objectStorage } from "@/lib/object
 import { checkRedis } from "@/lib/redis-health";
 import { checkCollaborationService } from "@/lib/collaboration-health";
 import { checkSchedulerHeartbeat } from "@/lib/scheduler-heartbeat";
+import { checkBackupFreshness } from "@/lib/backup-health";
 
 export const dynamic = "force-dynamic";
 
 /** Minimal unauthenticated liveness/readiness check for Docker and reverse proxies. */
 export async function GET() {
   try {
-    const [, migrations] = await Promise.all([
+    const [, migrations, , , , , backup] = await Promise.all([
       prisma.$queryRaw`SELECT 1`,
       prisma.$queryRaw<
         Array<{ migration_name: string }>
@@ -19,6 +20,7 @@ export async function GET() {
       checkRedis(),
       checkCollaborationService(),
       checkSchedulerHeartbeat(),
+      checkBackupFreshness(),
     ]);
     if (!migrations[0]?.migration_name) throw new Error("No completed migration");
     return NextResponse.json(
@@ -30,6 +32,11 @@ export async function GET() {
           redis: "ok",
           collaboration: "ok",
           scheduler: "ok",
+          backup: {
+            status: "ok",
+            id: backup.backupId,
+            ageMinutes: backup.ageMinutes,
+          },
           migration: migrations[0].migration_name,
         },
       },
@@ -40,7 +47,8 @@ export async function GET() {
       {
         status: "degraded",
         checks: {
-          dependencies: "database, object storage, Redis, or collaboration unavailable",
+          dependencies:
+            "database, object storage, Redis, collaboration, scheduler, or backup unavailable",
         },
       },
       { status: 503, headers: { "Cache-Control": "no-store" } },
