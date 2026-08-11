@@ -7,9 +7,10 @@ type DialogField = {
   label: string;
   placeholder?: string;
   required?: boolean;
-  type?: "text" | "url" | "number";
+  type?: "text" | "url" | "number" | "select";
   min?: number;
   step?: number;
+  options?: Array<{ label: string; value: string }>;
 };
 
 type FormDialogProps = {
@@ -76,21 +77,41 @@ export function FormDialog({
         {fields.map((field, index) => (
           <label key={field.name}>
             {field.label}
-            <input
-              ref={index === 0 ? firstInputRef : undefined}
-              type={field.type || "text"}
-              value={values[field.name] || ""}
-              placeholder={field.placeholder}
-              required={field.required}
-              min={field.min}
-              step={field.step}
-              onChange={(event) =>
-                setValues((current) => ({
-                  ...current,
-                  [field.name]: event.target.value,
-                }))
-              }
-            />
+            {field.type === "select" ? (
+              <select
+                autoFocus={index === 0}
+                value={values[field.name] || ""}
+                required={field.required}
+                onChange={(event) =>
+                  setValues((current) => ({
+                    ...current,
+                    [field.name]: event.target.value,
+                  }))
+                }
+              >
+                {field.options?.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                ref={index === 0 ? firstInputRef : undefined}
+                type={field.type || "text"}
+                value={values[field.name] || ""}
+                placeholder={field.placeholder}
+                required={field.required}
+                min={field.min}
+                step={field.step}
+                onChange={(event) =>
+                  setValues((current) => ({
+                    ...current,
+                    [field.name]: event.target.value,
+                  }))
+                }
+              />
+            )}
           </label>
         ))}
         <footer>

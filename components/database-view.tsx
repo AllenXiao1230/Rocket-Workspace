@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { evaluateFormula } from "@/lib/formula";
 import { parseCsv, toCsv } from "@/lib/csv";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { FormDialog } from "@/components/form-dialog";
 
 export type DatabasePropertyType =
   | "TEXT"
@@ -87,6 +88,7 @@ type PendingDatabaseAction =
   | { kind: "database" }
   | { kind: "template"; template: DatabaseTemplate }
   | { kind: "automation"; automation: DatabaseAutomation };
+type CreationDialog = "view" | "template";
 
 type Filter = {
   propertyId?: string;
@@ -443,6 +445,9 @@ export function DatabaseTable({
   const [notice, setNotice] = useState("");
   const [pendingAction, setPendingAction] =
     useState<PendingDatabaseAction | null>(null);
+  const [creationDialog, setCreationDialog] = useState<CreationDialog | null>(
+    null,
+  );
   const [formValues, setFormValues] = useState<Record<string, unknown>>({});
   const [showColumnComposer, setShowColumnComposer] = useState(false);
   const [propertyName, setPropertyName] = useState("");
@@ -1165,21 +1170,28 @@ export function DatabaseTable({
       setNotice("無法新增欄位，請確認欄位設定與編輯權限");
     }
   }
-  async function addView() {
-    const name = window.prompt("新檢視名稱", "新檢視");
-    if (!name?.trim()) return;
-    const layout = window
-      .prompt(`版面：${layouts.join("、")}`, "TABLE")
-      ?.toUpperCase() as DatabaseViewLayout;
-    if (!layouts.includes(layout)) return setNotice("版面不正確");
-    const view = await save(`/api/databases/${database.id}/views`, {
-      name,
-      layout,
-      filter,
-      sort,
-    });
-    onChange({ ...database, views: [...database.views, view] });
-    setActiveId(view.id);
+  async function addView(values: Record<string, string>) {
+    const name = values.name.trim();
+    const layout = values.layout as DatabaseViewLayout;
+    if (!name || !layouts.includes(layout)) {
+      setNotice("請輸入檢視名稱並選擇正確的版面");
+      return false;
+    }
+    try {
+      const view = await save(`/api/databases/${database.id}/views`, {
+        name,
+        layout,
+        filter,
+        sort,
+      });
+      onChange({ ...database, views: [...database.views, view] });
+      setActiveId(view.id);
+      setNotice("已新增檢視");
+      return true;
+    } catch {
+      setNotice("無法新增檢視");
+      return false;
+    }
   }
   async function saveView() {
     if (!activeView) return;
@@ -1199,34 +1211,47 @@ export function DatabaseTable({
       setNotice("檢視尚未儲存");
     }
   }
-  async function addTemplate() {
-    const name = window.prompt("模板名稱", "新模板");
-    if (!name?.trim()) return;
-    const values: Record<string, unknown> = {};
-    database.properties.forEach((property) => {
-      if (
-        ![
-          "FORMULA",
-          "ROLLUP",
-          "UNIQUE_ID",
-          "CREATED_TIME",
-          "UPDATED_TIME",
-        ].includes(property.type)
-      )
-        values[property.id] =
-          window.prompt(`${property.name} 預設值`, "") || "";
-    });
-    const template = await save(`/api/databases/${database.id}/templates`, {
-      name,
-      values,
-    });
-    onChange({
-      ...database,
-      templates: [
-        ...database.templates.filter((item) => item.id !== template.id),
-        template,
-      ],
-    });
+  async function addTemplate(values: Record<string, string>) {
+    const name = values.name.trim();
+    if (!name) {
+      setNotice("請輸入模板名稱");
+      return false;
+    }
+    const templateValues = Object.fromEntries(
+      database.properties
+        .filter(
+          (property) =>
+            ![
+              "FORMULA",
+              "ROLLUP",
+              "UNIQUE_ID",
+              "CREATED_TIME",
+              "UPDATED_TIME",
+            ].includes(property.type),
+        )
+        .map((property) => [
+          property.id,
+          values[`property-${property.id}`] || "",
+        ]),
+    );
+    try {
+      const template = await save(`/api/databases/${database.id}/templates`, {
+        name,
+        values: templateValues,
+      });
+      onChange({
+        ...database,
+        templates: [
+          ...database.templates.filter((item) => item.id !== template.id),
+          template,
+        ],
+      });
+      setNotice("已新增模板");
+      return true;
+    } catch {
+      setNotice("無法新增模板");
+      return false;
+    }
   }
   async function addAutomation() {
     const name = window.prompt("規則名稱", "設定預設狀態");
@@ -1822,7 +1847,10 @@ export function DatabaseTable({
             </button>
           ))}
           {editable && (
-            <button className="add-view" onClick={addView}>
+            <button
+              className="add-view"
+              onClick={() => setCreationDialog("view")}
+            >
               ＋ 新增檢視
             </button>
           )}
@@ -1840,7 +1868,9 @@ export function DatabaseTable({
               >
                 ♻ 欄位回收桶
               </button>
-              <button onClick={addTemplate}>模板</button>
+              <button onClick={() => setCreationDialog("template")}>
+                模板
+              </button>
               <button onClick={addAutomation}>自動化</button>
               <button onClick={saveView}>儲存檢視</button>
               <button
@@ -2587,6 +2617,70 @@ export function DatabaseTable({
           destructive
           onCancel={() => setPendingAction(null)}
           onConfirm={confirmPendingAction}
+        />
+      )}
+      {creationDialog && (
+        <FormDialog
+          key={creationDialog}
+          title={creationDialog === "view" ? "新增檢視" : "新增資料庫模板"}
+          description={
+            creationDialog === "view"
+              ? "選擇版面後，會套用目前的篩選與排序條件。"
+              : "設定建立新列時可套用的預設值；留白代表使用空值。"
+          }
+          submitLabel={creationDialog === "view" ? "新增檢視" : "建立模板"}
+          fields={
+            creationDialog === "view"
+              ? [
+                  {
+                    name: "name",
+                    label: "檢視名稱",
+                    required: true,
+                    placeholder: "例如：本週待辦",
+                  },
+                  {
+                    name: "layout",
+                    label: "版面",
+                    type: "select" as const,
+                    required: true,
+                    options: layouts.map((layout) => ({
+                      value: layout,
+                      label: layout,
+                    })),
+                  },
+                ]
+              : [
+                  {
+                    name: "name",
+                    label: "模板名稱",
+                    required: true,
+                    placeholder: "例如：標準工作項目",
+                  },
+                  ...database.properties
+                    .filter(
+                      (property) =>
+                        ![
+                          "FORMULA",
+                          "ROLLUP",
+                          "UNIQUE_ID",
+                          "CREATED_TIME",
+                          "UPDATED_TIME",
+                        ].includes(property.type),
+                    )
+                    .map((property) => ({
+                      name: `property-${property.id}`,
+                      label: `${property.name} 預設值`,
+                      placeholder: labels[property.type],
+                    })),
+                ]
+          }
+          initialValues={
+            creationDialog === "view"
+              ? { name: "新檢視", layout: "TABLE" }
+              : { name: "新模板" }
+          }
+          onCancel={() => setCreationDialog(null)}
+          onSubmit={creationDialog === "view" ? addView : addTemplate}
         />
       )}
     </section>
