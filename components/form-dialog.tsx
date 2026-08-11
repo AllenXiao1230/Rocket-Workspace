@@ -7,7 +7,9 @@ type DialogField = {
   label: string;
   placeholder?: string;
   required?: boolean;
-  type?: "text" | "url";
+  type?: "text" | "url" | "number";
+  min?: number;
+  step?: number;
 };
 
 type FormDialogProps = {
@@ -17,7 +19,9 @@ type FormDialogProps = {
   fields: DialogField[];
   initialValues?: Record<string, string>;
   onCancel: () => void;
-  onSubmit: (values: Record<string, string>) => boolean | void;
+  onSubmit: (
+    values: Record<string, string>,
+  ) => boolean | void | Promise<boolean | void>;
 };
 
 export function FormDialog({
@@ -35,9 +39,10 @@ export function FormDialog({
     ),
   );
   const firstInputRef = useRef<HTMLInputElement>(null);
+  const submitRef = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
-    firstInputRef.current?.focus();
+    (firstInputRef.current || submitRef.current)?.focus();
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") onCancel();
     };
@@ -45,9 +50,9 @@ export function FormDialog({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [onCancel]);
 
-  function submit(event: FormEvent<HTMLFormElement>) {
+  async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (onSubmit(values) !== false) onCancel();
+    if ((await onSubmit(values)) !== false) onCancel();
   }
 
   return (
@@ -77,6 +82,8 @@ export function FormDialog({
               value={values[field.name] || ""}
               placeholder={field.placeholder}
               required={field.required}
+              min={field.min}
+              step={field.step}
               onChange={(event) =>
                 setValues((current) => ({
                   ...current,
@@ -90,7 +97,7 @@ export function FormDialog({
           <button type="button" className="dialog-secondary" onClick={onCancel}>
             取消
           </button>
-          <button type="submit" className="dialog-primary">
+          <button ref={submitRef} type="submit" className="dialog-primary">
             {submitLabel}
           </button>
         </footer>

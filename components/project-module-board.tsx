@@ -2,61 +2,1233 @@
 
 import { useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { FormDialog } from "@/components/form-dialog";
 import type { TeamMember } from "@/components/team-management";
 import { RecordAttachments } from "@/components/record-attachments";
 
 export type ProjectModule = "tasks" | "issues" | "bom" | "tests";
+type DetailDialog =
+  | "worklog"
+  | "test-step"
+  | "test-measurement"
+  | "test-approval";
 export type ModuleRecord = {
   id: string;
   updatedAt?: string | Date;
   assignee?: { name: string } | null;
-  dependencies?: Array<{ dependsOn: { id: string; title: string; status: string } }>;
+  dependencies?: Array<{
+    dependsOn: { id: string; title: string; status: string };
+  }>;
   [key: string]: unknown;
 };
-type TrashedRecord = { id: string; title: string; deletedAt: string; deletionBatchId: string | null };
-const moduleText = { tasks: { title: "任務", hint: "安排工作、負責人、優先級與期限" }, issues: { title: "議題", hint: "追蹤風險、異常與處理狀態" }, bom: { title: "物料清單", hint: "管理料號、數量、供應商與採購狀態" }, tests: { title: "測試紀錄", hint: "記錄測試結果、日期、操作人與備註" } };
-const displayMember = (member: TeamMember) => member.nickname || member.user.name;
-const dateValue = (value: unknown) => value ? new Date(String(value)).toISOString().slice(0, 10) : "";
+type TrashedRecord = {
+  id: string;
+  title: string;
+  deletedAt: string;
+  deletionBatchId: string | null;
+};
+const moduleText = {
+  tasks: { title: "任務", hint: "安排工作、負責人、優先級與期限" },
+  issues: { title: "議題", hint: "追蹤風險、異常與處理狀態" },
+  bom: { title: "物料清單", hint: "管理料號、數量、供應商與採購狀態" },
+  tests: { title: "測試紀錄", hint: "記錄測試結果、日期、操作人與備註" },
+};
+const displayMember = (member: TeamMember) =>
+  member.nickname || member.user.name;
+const dateValue = (value: unknown) =>
+  value ? new Date(String(value)).toISOString().slice(0, 10) : "";
 
-export function ProjectModuleBoard({ projectId, module, initialRecords, members, editable, initialSelectedId, onSelectedIdChange, onRecordsChange }: { projectId: string; module: ProjectModule; initialRecords: ModuleRecord[]; members: TeamMember[]; editable: boolean; initialSelectedId?: string | null; onSelectedIdChange?: (id: string | null) => void; onRecordsChange?: (records: ModuleRecord[]) => void }) {
-  const [records, setRecords] = useState(initialRecords); const [nextCursor, setNextCursor] = useState<string | null>(null); const [loading, setLoading] = useState(true); const [title, setTitle] = useState(""); const [notice, setNotice] = useState(""); const [editMode, setEditMode] = useState(false); const [showTrash, setShowTrash] = useState(false); const [trashed, setTrashed] = useState<TrashedRecord[]>([]); const [selectedId, setSelectedId] = useState<string | null>(null); const [draggedTaskId, setDraggedTaskId] = useState<string |null>(null); const [pendingRemoval, setPendingRemoval] = useState<ModuleRecord | null>(null); const onRecordsChangeRef = useRef(onRecordsChange); onRecordsChangeRef.current = onRecordsChange; const info = moduleText[module]; const canEdit = editable && editMode;
-  const commitRecords = (next: ModuleRecord[]) => { setRecords(next); onRecordsChange?.(next); };
-  const selectRecord = (id: string | null) => { setSelectedId(id); onSelectedIdChange?.(id); };
-  useEffect(() => { setRecords(initialRecords); }, [initialRecords]);
-  useEffect(() => { let cancelled = false; setLoading(true); void fetch(`/api/projects/${projectId}/records/${module}?take=50`, { cache: "no-store" }).then(async (response) => response.ok ? response.json() as Promise<{ records: ModuleRecord[]; nextCursor: string | null }> : null).then((next) => { if (!cancelled && next) { setRecords(next.records); setNextCursor(next.nextCursor); onRecordsChangeRef.current?.(next.records); } else if (!cancelled) setNotice("無法載入紀錄"); }).finally(() => { if (!cancelled) setLoading(false); }); return () => { cancelled = true; }; }, [projectId, module]);
-  useEffect(() => { if (initialSelectedId && records.some((record) => record.id === initialSelectedId) && selectedId !== initialSelectedId) setSelectedId(initialSelectedId); }, [initialSelectedId, records, selectedId]);
-  async function request(path: string, method: "POST" | "PATCH" | "DELETE", body?: unknown) { const response = await fetch(path, { method, headers: body === undefined ? undefined : { "Content-Type": "application/json" }, body: body === undefined ? undefined : JSON.stringify(body) }); const result = await response.json(); if (!response.ok) throw new Error(result.error || "儲存失敗"); return result as ModuleRecord; }
-  async function create() { if (!title.trim()) return; try { const data = module === "bom" ? { name: title.trim() } : { title: title.trim() }; const record = await request(`/api/projects/${projectId}/records/${module}`, "POST", data); commitRecords([record, ...records]); setTitle(""); setNotice("已新增紀錄"); } catch (error) { setNotice(error instanceof Error ? error.message : "無法新增紀錄"); } }
-  async function update(record: ModuleRecord, values: Record<string, unknown>) { try { const saved = await request(`/api/projects/${projectId}/records/${module}/${record.id}`, "PATCH", values); commitRecords(records.map((item) => item.id === record.id ? saved : item)); setNotice("已儲存"); } catch (error) { setNotice(error instanceof Error ? error.message : "變更尚未儲存"); } }
-  async function loadTrash() { const response = await fetch(`/api/projects/${projectId}/records/${module}/recycle`, { cache: "no-store" }); if (!response.ok) return setNotice("無法讀取回收桶"); setTrashed(await response.json()); }
-  async function toggleTrash() { const next = !showTrash; setShowTrash(next); if (next) await loadTrash(); }
-  async function restore(record: TrashedRecord) { if (!record.deletionBatchId) return; const response = await fetch(`/api/projects/${projectId}/records/${module}/recycle/${record.deletionBatchId}`, { method: "PATCH" }); const result = await response.json(); if (!response.ok) return setNotice(result.error || "無法還原紀錄"); const refreshed = await fetch(`/api/projects/${projectId}/records/${module}?take=50`, { cache: "no-store" }); if (refreshed.ok) { const page = await refreshed.json() as { records: ModuleRecord[]; nextCursor: string | null }; commitRecords(page.records); setNextCursor(page.nextCursor); } setTrashed((current) => current.filter((item) => item.deletionBatchId !== record.deletionBatchId)); setNotice("紀錄已還原。"); }
-  async function loadMore() { if (!nextCursor || loading) return; setLoading(true); try { const response = await fetch(`/api/projects/${projectId}/records/${module}?take=50&cursor=${encodeURIComponent(nextCursor)}`, { cache: "no-store" }); const page = await response.json() as { records?: ModuleRecord[]; nextCursor?: string | null }; if (!response.ok) throw new Error(); const next = [...records, ...(page.records || [])]; commitRecords(next); setNextCursor(page.nextCursor || null); } catch { setNotice("無法載入更多紀錄"); } finally { setLoading(false); } }
-  async function remove(record: ModuleRecord) { try { await request(`/api/projects/${projectId}/records/${module}/${record.id}`, "DELETE"); commitRecords(records.filter((item) => item.id !== record.id)); if (selectedId === record.id) selectRecord(null); setNotice("紀錄已移至回收桶"); } catch (error) { setNotice(error instanceof Error ? error.message : "無法刪除紀錄"); } }
-  const input = (record: ModuleRecord, field: string, type = "text") => <input className="module-cell-input" disabled={!canEdit} type={type} defaultValue={String(record[field] ?? "")} onBlur={(event) => { const value = type === "number" && field !== "unitCost" ? Number(event.currentTarget.value || 0) : event.currentTarget.value; if (String(record[field] ?? "") !== String(value)) void update(record, { [field]: value }); }} />;
-  const select = (record: ModuleRecord, field: string, options: Array<[string, string]>) => <select className="module-cell-input" disabled={!canEdit} value={String(record[field] ?? "")} onChange={(event) => void update(record, { [field]: field === "priority" || field === "severity" ? Number(event.target.value) : event.target.value })}>{options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select>;
-  const removeButton = (record: ModuleRecord) => canEdit ? <button className="module-delete" onClick={() => setPendingRemoval(record)}>移至回收桶</button> : null;
-  const actionButtons = (record: ModuleRecord) => <span className="module-actions"><button type="button" onClick={() => selectRecord(record.id)}>詳細</button>{removeButton(record)}</span>;
-  const dependencyIds = (record: ModuleRecord) => Array.isArray(record.dependencies) ? record.dependencies.map((item) => (item as { dependsOn?: { id?: string } }).dependsOn?.id).filter((id): id is string => Boolean(id)) : [];
-  async function updateDependencies(record: ModuleRecord, ids: string[]) { try { const response = await fetch(`/api/projects/${projectId}/records/tasks/${record.id}/dependencies`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ dependencyIds: ids }) }); const result = await response.json(); if (!response.ok) throw new Error(result.error || "前置任務未儲存"); commitRecords(records.map((item) => item.id === record.id ? result : item)); setNotice("前置任務已儲存"); } catch (error) { setNotice(error instanceof Error ? error.message : "前置任務未儲存"); } }
-  const dependencySelect = (record: ModuleRecord) => <select aria-label={`${String(record.title || "任務")} 的前置任務`} className="module-cell-input task-dependencies" disabled={!canEdit} multiple value={dependencyIds(record)} onChange={(event) => void updateDependencies(record, Array.from(event.currentTarget.selectedOptions, (option) => option.value))}>{records.filter((item) => item.id !== record.id).map((item) => <option key={item.id} value={item.id}>{String(item.title || "未命名任務")}</option>)}</select>;
-  const table = module === "tasks" ? <div className="module-table task-module-table"><header><span>任務</span><span>狀態</span><span>優先級</span><span>開始</span><span>結束</span><span>負責人</span><span>前置任務</span><span /></header>{records.map((record) => <article key={record.id}>{input(record, "title")}{select(record, "status", [["BACKLOG", "待排程"], ["TODO", "待處理"], ["IN_PROGRESS", "進行中"], ["BLOCKED", "受阻"], ["DONE", "已完成"]])}{select(record, "priority", [["1", "P1"], ["2", "P2"], ["3", "P3"], ["4", "P4"], ["5", "P5"]])}<input className="module-cell-input" disabled={!canEdit} type="date" value={dateValue(record.startDate)} onChange={(event) => void update(record, { startDate: event.target.value || null })} /><input className="module-cell-input" disabled={!canEdit} type="date" value={dateValue(record.dueDate)} onChange={(event) => void update(record, { dueDate: event.target.value || null })} /><select className="module-cell-input" disabled={!canEdit} value={String(record.assigneeId || "")} onChange={(event) => void update(record, { assigneeId: event.target.value || null })}><option value="">未指派</option>{members.map((member) => <option key={member.id} value={member.user.id}>{displayMember(member)}</option>)}</select>{dependencySelect(record)}{actionButtons(record)}</article>)}</div> : module === "issues" ? <div className="module-table"><header><span>編號</span><span>議題</span><span>狀態</span><span>嚴重度</span><span /></header>{records.map((record) => <article key={record.id}>{input(record, "key")}{input(record, "title")}{select(record, "status", [["OPEN", "開啟"], ["INVESTIGATING", "調查中"], ["RESOLVED", "已解決"], ["WONT_FIX", "不處理"]])}{select(record, "severity", [["1", "S1"], ["2", "S2"], ["3", "S3"], ["4", "S4"], ["5", "S5"]])}{actionButtons(record)}</article>)}</div> : module === "bom" ? <div className="module-table"><header><span>料號</span><span>名稱</span><span>數量</span><span>供應商</span><span>狀態</span><span>單價</span><span /></header>{records.map((record) => <article key={record.id}>{input(record, "partNumber")}{input(record, "name")}{input(record, "quantity", "number")}{input(record, "supplier")}{input(record, "status")}{input(record, "unitCost", "number")}{actionButtons(record)}</article>)}</div> : <div className="module-table"><header><span>測試名稱</span><span>結果</span><span>日期</span><span>操作人</span><span>備註</span><span /></header>{records.map((record) => <article key={record.id}>{input(record, "title")}{select(record, "outcome", [["PLANNED", "計畫中"], ["PASS", "通過"], ["FAIL", "失敗"], ["BLOCKED", "受阻"]])}<input className="module-cell-input" disabled={!canEdit} type="date" value={dateValue(record.testDate)} onChange={(event) => void update(record, { testDate: event.target.value || null })} />{input(record, "operator")}{input(record, "notes")}{actionButtons(record)}</article>)}</div>;
+export function ProjectModuleBoard({
+  projectId,
+  module,
+  initialRecords,
+  members,
+  editable,
+  initialSelectedId,
+  onSelectedIdChange,
+  onRecordsChange,
+}: {
+  projectId: string;
+  module: ProjectModule;
+  initialRecords: ModuleRecord[];
+  members: TeamMember[];
+  editable: boolean;
+  initialSelectedId?: string | null;
+  onSelectedIdChange?: (id: string | null) => void;
+  onRecordsChange?: (records: ModuleRecord[]) => void;
+}) {
+  const [records, setRecords] = useState(initialRecords);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [title, setTitle] = useState("");
+  const [notice, setNotice] = useState("");
+  const [editMode, setEditMode] = useState(false);
+  const [showTrash, setShowTrash] = useState(false);
+  const [trashed, setTrashed] = useState<TrashedRecord[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
+  const [pendingRemoval, setPendingRemoval] = useState<ModuleRecord | null>(
+    null,
+  );
+  const onRecordsChangeRef = useRef(onRecordsChange);
+  onRecordsChangeRef.current = onRecordsChange;
+  const info = moduleText[module];
+  const canEdit = editable && editMode;
+  const commitRecords = (next: ModuleRecord[]) => {
+    setRecords(next);
+    onRecordsChange?.(next);
+  };
+  const selectRecord = (id: string | null) => {
+    setSelectedId(id);
+    onSelectedIdChange?.(id);
+  };
+  useEffect(() => {
+    setRecords(initialRecords);
+  }, [initialRecords]);
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    void fetch(`/api/projects/${projectId}/records/${module}?take=50`, {
+      cache: "no-store",
+    })
+      .then(async (response) =>
+        response.ok
+          ? (response.json() as Promise<{
+              records: ModuleRecord[];
+              nextCursor: string | null;
+            }>)
+          : null,
+      )
+      .then((next) => {
+        if (!cancelled && next) {
+          setRecords(next.records);
+          setNextCursor(next.nextCursor);
+          onRecordsChangeRef.current?.(next.records);
+        } else if (!cancelled) setNotice("無法載入紀錄");
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [projectId, module]);
+  useEffect(() => {
+    if (
+      initialSelectedId &&
+      records.some((record) => record.id === initialSelectedId) &&
+      selectedId !== initialSelectedId
+    )
+      setSelectedId(initialSelectedId);
+  }, [initialSelectedId, records, selectedId]);
+  async function request(
+    path: string,
+    method: "POST" | "PATCH" | "DELETE",
+    body?: unknown,
+  ) {
+    const response = await fetch(path, {
+      method,
+      headers:
+        body === undefined ? undefined : { "Content-Type": "application/json" },
+      body: body === undefined ? undefined : JSON.stringify(body),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.error || "儲存失敗");
+    return result as ModuleRecord;
+  }
+  async function create() {
+    if (!title.trim()) return;
+    try {
+      const data =
+        module === "bom" ? { name: title.trim() } : { title: title.trim() };
+      const record = await request(
+        `/api/projects/${projectId}/records/${module}`,
+        "POST",
+        data,
+      );
+      commitRecords([record, ...records]);
+      setTitle("");
+      setNotice("已新增紀錄");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "無法新增紀錄");
+    }
+  }
+  async function update(record: ModuleRecord, values: Record<string, unknown>) {
+    try {
+      const saved = await request(
+        `/api/projects/${projectId}/records/${module}/${record.id}`,
+        "PATCH",
+        values,
+      );
+      commitRecords(
+        records.map((item) => (item.id === record.id ? saved : item)),
+      );
+      setNotice("已儲存");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "變更尚未儲存");
+    }
+  }
+  async function loadTrash() {
+    const response = await fetch(
+      `/api/projects/${projectId}/records/${module}/recycle`,
+      { cache: "no-store" },
+    );
+    if (!response.ok) return setNotice("無法讀取回收桶");
+    setTrashed(await response.json());
+  }
+  async function toggleTrash() {
+    const next = !showTrash;
+    setShowTrash(next);
+    if (next) await loadTrash();
+  }
+  async function restore(record: TrashedRecord) {
+    if (!record.deletionBatchId) return;
+    const response = await fetch(
+      `/api/projects/${projectId}/records/${module}/recycle/${record.deletionBatchId}`,
+      { method: "PATCH" },
+    );
+    const result = await response.json();
+    if (!response.ok) return setNotice(result.error || "無法還原紀錄");
+    const refreshed = await fetch(
+      `/api/projects/${projectId}/records/${module}?take=50`,
+      { cache: "no-store" },
+    );
+    if (refreshed.ok) {
+      const page = (await refreshed.json()) as {
+        records: ModuleRecord[];
+        nextCursor: string | null;
+      };
+      commitRecords(page.records);
+      setNextCursor(page.nextCursor);
+    }
+    setTrashed((current) =>
+      current.filter((item) => item.deletionBatchId !== record.deletionBatchId),
+    );
+    setNotice("紀錄已還原。");
+  }
+  async function loadMore() {
+    if (!nextCursor || loading) return;
+    setLoading(true);
+    try {
+      const response = await fetch(
+        `/api/projects/${projectId}/records/${module}?take=50&cursor=${encodeURIComponent(nextCursor)}`,
+        { cache: "no-store" },
+      );
+      const page = (await response.json()) as {
+        records?: ModuleRecord[];
+        nextCursor?: string | null;
+      };
+      if (!response.ok) throw new Error();
+      const next = [...records, ...(page.records || [])];
+      commitRecords(next);
+      setNextCursor(page.nextCursor || null);
+    } catch {
+      setNotice("無法載入更多紀錄");
+    } finally {
+      setLoading(false);
+    }
+  }
+  async function remove(record: ModuleRecord) {
+    try {
+      await request(
+        `/api/projects/${projectId}/records/${module}/${record.id}`,
+        "DELETE",
+      );
+      commitRecords(records.filter((item) => item.id !== record.id));
+      if (selectedId === record.id) selectRecord(null);
+      setNotice("紀錄已移至回收桶");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "無法刪除紀錄");
+    }
+  }
+  const input = (record: ModuleRecord, field: string, type = "text") => (
+    <input
+      className="module-cell-input"
+      disabled={!canEdit}
+      type={type}
+      defaultValue={String(record[field] ?? "")}
+      onBlur={(event) => {
+        const value =
+          type === "number" && field !== "unitCost"
+            ? Number(event.currentTarget.value || 0)
+            : event.currentTarget.value;
+        if (String(record[field] ?? "") !== String(value))
+          void update(record, { [field]: value });
+      }}
+    />
+  );
+  const select = (
+    record: ModuleRecord,
+    field: string,
+    options: Array<[string, string]>,
+  ) => (
+    <select
+      className="module-cell-input"
+      disabled={!canEdit}
+      value={String(record[field] ?? "")}
+      onChange={(event) =>
+        void update(record, {
+          [field]:
+            field === "priority" || field === "severity"
+              ? Number(event.target.value)
+              : event.target.value,
+        })
+      }
+    >
+      {options.map(([value, label]) => (
+        <option key={value} value={value}>
+          {label}
+        </option>
+      ))}
+    </select>
+  );
+  const removeButton = (record: ModuleRecord) =>
+    canEdit ? (
+      <button
+        className="module-delete"
+        onClick={() => setPendingRemoval(record)}
+      >
+        移至回收桶
+      </button>
+    ) : null;
+  const actionButtons = (record: ModuleRecord) => (
+    <span className="module-actions">
+      <button type="button" onClick={() => selectRecord(record.id)}>
+        詳細
+      </button>
+      {removeButton(record)}
+    </span>
+  );
+  const dependencyIds = (record: ModuleRecord) =>
+    Array.isArray(record.dependencies)
+      ? record.dependencies
+          .map(
+            (item) => (item as { dependsOn?: { id?: string } }).dependsOn?.id,
+          )
+          .filter((id): id is string => Boolean(id))
+      : [];
+  async function updateDependencies(record: ModuleRecord, ids: string[]) {
+    try {
+      const response = await fetch(
+        `/api/projects/${projectId}/records/tasks/${record.id}/dependencies`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ dependencyIds: ids }),
+        },
+      );
+      const result = await response.json();
+      if (!response.ok) throw new Error(result.error || "前置任務未儲存");
+      commitRecords(
+        records.map((item) => (item.id === record.id ? result : item)),
+      );
+      setNotice("前置任務已儲存");
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "前置任務未儲存");
+    }
+  }
+  const dependencySelect = (record: ModuleRecord) => (
+    <select
+      aria-label={`${String(record.title || "任務")} 的前置任務`}
+      className="module-cell-input task-dependencies"
+      disabled={!canEdit}
+      multiple
+      value={dependencyIds(record)}
+      onChange={(event) =>
+        void updateDependencies(
+          record,
+          Array.from(
+            event.currentTarget.selectedOptions,
+            (option) => option.value,
+          ),
+        )
+      }
+    >
+      {records
+        .filter((item) => item.id !== record.id)
+        .map((item) => (
+          <option key={item.id} value={item.id}>
+            {String(item.title || "未命名任務")}
+          </option>
+        ))}
+    </select>
+  );
+  const table =
+    module === "tasks" ? (
+      <div className="module-table task-module-table">
+        <header>
+          <span>任務</span>
+          <span>狀態</span>
+          <span>優先級</span>
+          <span>開始</span>
+          <span>結束</span>
+          <span>負責人</span>
+          <span>前置任務</span>
+          <span />
+        </header>
+        {records.map((record) => (
+          <article key={record.id}>
+            {input(record, "title")}
+            {select(record, "status", [
+              ["BACKLOG", "待排程"],
+              ["TODO", "待處理"],
+              ["IN_PROGRESS", "進行中"],
+              ["BLOCKED", "受阻"],
+              ["DONE", "已完成"],
+            ])}
+            {select(record, "priority", [
+              ["1", "P1"],
+              ["2", "P2"],
+              ["3", "P3"],
+              ["4", "P4"],
+              ["5", "P5"],
+            ])}
+            <input
+              className="module-cell-input"
+              disabled={!canEdit}
+              type="date"
+              value={dateValue(record.startDate)}
+              onChange={(event) =>
+                void update(record, { startDate: event.target.value || null })
+              }
+            />
+            <input
+              className="module-cell-input"
+              disabled={!canEdit}
+              type="date"
+              value={dateValue(record.dueDate)}
+              onChange={(event) =>
+                void update(record, { dueDate: event.target.value || null })
+              }
+            />
+            <select
+              className="module-cell-input"
+              disabled={!canEdit}
+              value={String(record.assigneeId || "")}
+              onChange={(event) =>
+                void update(record, { assigneeId: event.target.value || null })
+              }
+            >
+              <option value="">未指派</option>
+              {members.map((member) => (
+                <option key={member.id} value={member.user.id}>
+                  {displayMember(member)}
+                </option>
+              ))}
+            </select>
+            {dependencySelect(record)}
+            {actionButtons(record)}
+          </article>
+        ))}
+      </div>
+    ) : module === "issues" ? (
+      <div className="module-table">
+        <header>
+          <span>編號</span>
+          <span>議題</span>
+          <span>狀態</span>
+          <span>嚴重度</span>
+          <span />
+        </header>
+        {records.map((record) => (
+          <article key={record.id}>
+            {input(record, "key")}
+            {input(record, "title")}
+            {select(record, "status", [
+              ["OPEN", "開啟"],
+              ["INVESTIGATING", "調查中"],
+              ["RESOLVED", "已解決"],
+              ["WONT_FIX", "不處理"],
+            ])}
+            {select(record, "severity", [
+              ["1", "S1"],
+              ["2", "S2"],
+              ["3", "S3"],
+              ["4", "S4"],
+              ["5", "S5"],
+            ])}
+            {actionButtons(record)}
+          </article>
+        ))}
+      </div>
+    ) : module === "bom" ? (
+      <div className="module-table">
+        <header>
+          <span>料號</span>
+          <span>名稱</span>
+          <span>數量</span>
+          <span>供應商</span>
+          <span>狀態</span>
+          <span>單價</span>
+          <span />
+        </header>
+        {records.map((record) => (
+          <article key={record.id}>
+            {input(record, "partNumber")}
+            {input(record, "name")}
+            {input(record, "quantity", "number")}
+            {input(record, "supplier")}
+            {input(record, "status")}
+            {input(record, "unitCost", "number")}
+            {actionButtons(record)}
+          </article>
+        ))}
+      </div>
+    ) : (
+      <div className="module-table">
+        <header>
+          <span>測試名稱</span>
+          <span>結果</span>
+          <span>日期</span>
+          <span>操作人</span>
+          <span>備註</span>
+          <span />
+        </header>
+        {records.map((record) => (
+          <article key={record.id}>
+            {input(record, "title")}
+            {select(record, "outcome", [
+              ["PLANNED", "計畫中"],
+              ["PASS", "通過"],
+              ["FAIL", "失敗"],
+              ["BLOCKED", "受阻"],
+            ])}
+            <input
+              className="module-cell-input"
+              disabled={!canEdit}
+              type="date"
+              value={dateValue(record.testDate)}
+              onChange={(event) =>
+                void update(record, { testDate: event.target.value || null })
+              }
+            />
+            {input(record, "operator")}
+            {input(record, "notes")}
+            {actionButtons(record)}
+          </article>
+        ))}
+      </div>
+    );
   const selected = records.find((record) => record.id === selectedId) || null;
-  const kanban = module === "tasks" ? <section className="task-kanban"><header><strong>看板</strong><span>拖曳卡片即可更新任務狀態</span></header><div>{[["BACKLOG", "待排程"], ["TODO", "待處理"], ["IN_PROGRESS", "進行中"], ["BLOCKED", "受阻"], ["DONE", "已完成"]].map(([status, label]) => <section key={status} onDragOver={(event) => { if (canEdit) event.preventDefault(); }} onDrop={() => { const record = records.find((item) => item.id === draggedTaskId); if (record) void update(record, { status }); setDraggedTaskId(null); }}><h3>{label}<small>{records.filter((item) => item.status === status).length}</small></h3>{records.filter((item) => item.status === status).map((record) => <button type="button" draggable={canEdit} key={record.id} onDragStart={() => setDraggedTaskId(record.id)} onClick={() => selectRecord(record.id)}><strong>{String(record.title || "未命名任務")}</strong><span>P{String(record.priority || 2)}{record.assignee?.name ? ` · ${String((record.assignee as { name?: string }).name)}` : ""}</span></button>)}</section>)}</div></section> : null;
-  return <section className="module-view module-editor"><div className="module-hero"><div><p className="eyebrow">專案模組</p><h1>{info.title}</h1><p>{info.hint}</p></div><div className="module-hero-actions">{editable && <button className={canEdit ? "module-edit-toggle active" : "module-edit-toggle"} onClick={() => setEditMode((current) => !current)}>{canEdit ? "✓ 完成編輯" : "✎ 啟用編輯"}</button>}<button className="module-edit-toggle module-trash-toggle" type="button" onClick={() => void toggleTrash()}>♻ 回收桶{trashed.length ? ` ${trashed.length}` : ""}</button><span className="overview-badge">{loading ? "載入中…" : `${records.length} 筆`}</span></div></div>{canEdit ? <form className="module-create" onSubmit={(event) => { event.preventDefault(); void create(); }}><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder={module === "bom" ? "新增物料名稱" : `新增${info.title}`} required /><button type="submit">＋ 新增</button></form> : <p className="module-locked-hint">{editable ? "目前為閱讀模式。按「啟用編輯」後才可新增、修改或移至回收桶。" : "你目前為檢視者，只能閱讀此模組。"}</p>}{loading ? <div className="empty">正在載入紀錄…</div> : <>{table}{kanban}{selected && <ModuleRecordDetails projectId={projectId} module={module} record={selected} records={records} canEdit={canEdit} onClose={() => selectRecord(null)} onUpdate={update} />}{nextCursor && <button className="button-secondary database-bottom-add" onClick={() => void loadMore()}>載入更多紀錄</button>}{!records.length && <div className="empty">尚無紀錄</div>}</>}{showTrash && <section className="module-recycle"><h2>回收桶</h2>{trashed.length ? trashed.map((record) => <article key={record.id}><span><strong>{record.title}</strong><small>刪除於 {new Date(record.deletedAt).toLocaleString("zh-TW")}</small></span>{canEdit && <button className="collab-primary" onClick={() => void restore(record)}>還原</button>}</article>) : <p className="hint">此模組的回收桶是空的。</p>}</section>}{notice && <span className="collab-notice">{notice}</span>}{pendingRemoval && <ConfirmDialog title="移至回收桶？" description={`「${String(pendingRemoval.title || pendingRemoval.name || "此紀錄")}」可在本頁回收桶中還原。`} confirmLabel="移至回收桶" destructive onCancel={() => setPendingRemoval(null)} onConfirm={() => { const record = pendingRemoval; setPendingRemoval(null); void remove(record); }} />}</section>;
+  const kanban =
+    module === "tasks" ? (
+      <section className="task-kanban">
+        <header>
+          <strong>看板</strong>
+          <span>拖曳卡片即可更新任務狀態</span>
+        </header>
+        <div>
+          {[
+            ["BACKLOG", "待排程"],
+            ["TODO", "待處理"],
+            ["IN_PROGRESS", "進行中"],
+            ["BLOCKED", "受阻"],
+            ["DONE", "已完成"],
+          ].map(([status, label]) => (
+            <section
+              key={status}
+              onDragOver={(event) => {
+                if (canEdit) event.preventDefault();
+              }}
+              onDrop={() => {
+                const record = records.find(
+                  (item) => item.id === draggedTaskId,
+                );
+                if (record) void update(record, { status });
+                setDraggedTaskId(null);
+              }}
+            >
+              <h3>
+                {label}
+                <small>
+                  {records.filter((item) => item.status === status).length}
+                </small>
+              </h3>
+              {records
+                .filter((item) => item.status === status)
+                .map((record) => (
+                  <button
+                    type="button"
+                    draggable={canEdit}
+                    key={record.id}
+                    onDragStart={() => setDraggedTaskId(record.id)}
+                    onClick={() => selectRecord(record.id)}
+                  >
+                    <strong>{String(record.title || "未命名任務")}</strong>
+                    <span>
+                      P{String(record.priority || 2)}
+                      {record.assignee?.name
+                        ? ` · ${String((record.assignee as { name?: string }).name)}`
+                        : ""}
+                    </span>
+                  </button>
+                ))}
+            </section>
+          ))}
+        </div>
+      </section>
+    ) : null;
+  return (
+    <section className="module-view module-editor">
+      <div className="module-hero">
+        <div>
+          <p className="eyebrow">專案模組</p>
+          <h1>{info.title}</h1>
+          <p>{info.hint}</p>
+        </div>
+        <div className="module-hero-actions">
+          {editable && (
+            <button
+              className={
+                canEdit ? "module-edit-toggle active" : "module-edit-toggle"
+              }
+              onClick={() => setEditMode((current) => !current)}
+            >
+              {canEdit ? "✓ 完成編輯" : "✎ 啟用編輯"}
+            </button>
+          )}
+          <button
+            className="module-edit-toggle module-trash-toggle"
+            type="button"
+            onClick={() => void toggleTrash()}
+          >
+            ♻ 回收桶{trashed.length ? ` ${trashed.length}` : ""}
+          </button>
+          <span className="overview-badge">
+            {loading ? "載入中…" : `${records.length} 筆`}
+          </span>
+        </div>
+      </div>
+      {canEdit ? (
+        <form
+          className="module-create"
+          onSubmit={(event) => {
+            event.preventDefault();
+            void create();
+          }}
+        >
+          <input
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder={
+              module === "bom" ? "新增物料名稱" : `新增${info.title}`
+            }
+            required
+          />
+          <button type="submit">＋ 新增</button>
+        </form>
+      ) : (
+        <p className="module-locked-hint">
+          {editable
+            ? "目前為閱讀模式。按「啟用編輯」後才可新增、修改或移至回收桶。"
+            : "你目前為檢視者，只能閱讀此模組。"}
+        </p>
+      )}
+      {loading ? (
+        <div className="empty">正在載入紀錄…</div>
+      ) : (
+        <>
+          {table}
+          {kanban}
+          {selected && (
+            <ModuleRecordDetails
+              projectId={projectId}
+              module={module}
+              record={selected}
+              records={records}
+              canEdit={canEdit}
+              onClose={() => selectRecord(null)}
+              onUpdate={update}
+            />
+          )}
+          {nextCursor && (
+            <button
+              className="button-secondary database-bottom-add"
+              onClick={() => void loadMore()}
+            >
+              載入更多紀錄
+            </button>
+          )}
+          {!records.length && <div className="empty">尚無紀錄</div>}
+        </>
+      )}
+      {showTrash && (
+        <section className="module-recycle">
+          <h2>回收桶</h2>
+          {trashed.length ? (
+            trashed.map((record) => (
+              <article key={record.id}>
+                <span>
+                  <strong>{record.title}</strong>
+                  <small>
+                    刪除於 {new Date(record.deletedAt).toLocaleString("zh-TW")}
+                  </small>
+                </span>
+                {canEdit && (
+                  <button
+                    className="collab-primary"
+                    onClick={() => void restore(record)}
+                  >
+                    還原
+                  </button>
+                )}
+              </article>
+            ))
+          ) : (
+            <p className="hint">此模組的回收桶是空的。</p>
+          )}
+        </section>
+      )}
+      {notice && <span className="collab-notice">{notice}</span>}
+      {pendingRemoval && (
+        <ConfirmDialog
+          title="移至回收桶？"
+          description={`「${String(pendingRemoval.title || pendingRemoval.name || "此紀錄")}」可在本頁回收桶中還原。`}
+          confirmLabel="移至回收桶"
+          destructive
+          onCancel={() => setPendingRemoval(null)}
+          onConfirm={() => {
+            const record = pendingRemoval;
+            setPendingRemoval(null);
+            void remove(record);
+          }}
+        />
+      )}
+    </section>
+  );
 }
 
-function ModuleRecordDetails({ projectId, module, record, records, canEdit, onClose, onUpdate }: { projectId: string; module: ProjectModule; record: ModuleRecord; records: ModuleRecord[]; canEdit: boolean; onClose: () => void; onUpdate: (record: ModuleRecord, values: Record<string, unknown>) => Promise<void> }) {
+function ModuleRecordDetails({
+  projectId,
+  module,
+  record,
+  records,
+  canEdit,
+  onClose,
+  onUpdate,
+}: {
+  projectId: string;
+  module: ProjectModule;
+  record: ModuleRecord;
+  records: ModuleRecord[];
+  canEdit: boolean;
+  onClose: () => void;
+  onUpdate: (
+    record: ModuleRecord,
+    values: Record<string, unknown>,
+  ) => Promise<void>;
+}) {
   const [notice, setNotice] = useState("");
-  const [worklogs, setWorklogs] = useState<Array<{ id: string; minutes: number; note: string | null; workDate: string; user: { name: string } }>>([]);
-  const [evidence, setEvidence] = useState<{ steps: Array<{ id: string; instruction: string; expected: string | null; status: string }>; measurements: Array<{ id: string; name: string; value: number; unit: string | null }>; approvals: Array<{ id: string; status: string; note: string | null; reviewer: { name: string } }>; requirements: Array<{ requirement: { key: string; title: string } }> } | null>(null);
-  useEffect(() => { setNotice(""); if (module === "tasks") void fetch(`/api/projects/${projectId}/records/tasks/${record.id}/worklogs`).then((r) => r.ok ? r.json() : []).then(setWorklogs); if (module === "tests") void fetch(`/api/projects/${projectId}/records/tests/${record.id}/evidence`).then((r) => r.ok ? r.json() : null).then(setEvidence); }, [module, projectId, record.id]);
-  const updateField = (name: string, value: unknown) => { if (canEdit) void onUpdate(record, { [name]: value }); };
-  async function addWorklog() { const minutes = Number(window.prompt("工時（分鐘）", "60")); if (!Number.isInteger(minutes) || minutes < 1) return; const response = await fetch(`/api/projects/${projectId}/records/tasks/${record.id}/worklogs`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ minutes, note: window.prompt("工作說明（可留空）", "") || null }) }); const result = await response.json(); if (!response.ok) setNotice(result.error || "無法新增工時"); else setWorklogs((current) => [result, ...current]); }
-  async function testAction(body: Record<string, unknown>) { const response = await fetch(`/api/projects/${projectId}/records/tests/${record.id}/evidence`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }); const result = await response.json(); if (!response.ok) return setNotice(result.error || "無法儲存測試證據"); const refreshed = await fetch(`/api/projects/${projectId}/records/tests/${record.id}/evidence`).then((r) => r.ok ? r.json() : null); setEvidence(refreshed); }
-  const input = (label: string, name: string, type = "text") => <label>{label}<input disabled={!canEdit} type={type} defaultValue={Array.isArray(record[name]) ? (record[name] as unknown[]).join(", ") : String(record[name] ?? "")} onBlur={(event) => updateField(name, type === "number" ? Number(event.currentTarget.value || 0) : event.currentTarget.value || null)} /></label>;
-  const taskBody = <><div className="module-detail-grid"><label>父任務<select disabled={!canEdit} value={String(record.parentId || "")} onChange={(event) => updateField("parentId", event.target.value || null)}><option value="">無（最上層任務）</option>{records.filter((item) => item.id !== record.id).map((item) => <option key={item.id} value={item.id}>{String(item.title || "未命名任務")}</option>)}</select></label><label>里程碑<select disabled={!canEdit} value={String(Boolean(record.milestone))} onChange={(event) => updateField("milestone", event.target.value === "true")}><option value="false">一般任務</option><option value="true">里程碑</option></select></label>{input("週期規則", "recurrenceRule")}<label>SLA 到期日<input disabled={!canEdit} type="date" value={dateValue(record.slaDueAt)} onChange={(event) => updateField("slaDueAt", event.target.value || null)} /></label></div><div className="module-detail-section"><h3>子任務</h3><p>{records.filter((item) => item.parentId === record.id).map((item) => String(item.title)).join("、") || "尚無子任務。"}</p></div><div className="module-detail-section"><h3>工時紀錄</h3>{canEdit && <button type="button" onClick={() => void addWorklog()}>＋ 新增工時</button>}{worklogs.length ? worklogs.map((item) => <p key={item.id}>{new Date(item.workDate).toLocaleDateString("zh-TW")} · {item.user.name} · {item.minutes} 分鐘{item.note ? ` · ${item.note}` : ""}</p>) : <p className="hint">尚無工時紀錄。</p>}</div></>;
-  const bomBody = <div className="module-detail-grid">{input("供應商料號", "supplierPartNumber")}{input("庫存數量", "inventoryQuantity", "number")}{input("補貨門檻", "reorderPoint", "number")}{input("幣別（ISO）", "currency")}{input("版本", "version")}<label>採購狀態<select disabled={!canEdit} value={String(record.purchaseStatus || "NOT_REQUIRED")} onChange={(event) => updateField("purchaseStatus", event.target.value)}>{[["NOT_REQUIRED", "不需採購"], ["PLANNED", "規劃中"], ["REQUESTED", "請購中"], ["ORDERED", "已下單"], ["RECEIVED", "已到貨"], ["CANCELLED", "已取消"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label><label>核准狀態<select disabled={!canEdit} value={String(record.approvalStatus || "DRAFT")} onChange={(event) => updateField("approvalStatus", event.target.value)}>{[["DRAFT", "草稿"], ["PENDING", "待核准"], ["APPROVED", "已核准"], ["REJECTED", "已拒絕"]].map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>{input("交期（日）", "leadTimeDays", "number")}<label>風險等級<select disabled={!canEdit} value={String(record.riskLevel || 1)} onChange={(event) => updateField("riskLevel", Number(event.target.value))}>{[1,2,3,4,5].map((value) => <option key={value} value={value}>R{value}</option>)}</select></label><label>替代料（逗號分隔）<input disabled={!canEdit} defaultValue={Array.isArray(record.alternatives) ? record.alternatives.join(", ") : ""} onBlur={(event) => updateField("alternatives", event.currentTarget.value.split(",").map((item) => item.trim()).filter(Boolean))} /></label><label>採購備註<textarea disabled={!canEdit} defaultValue={String(record.notes ?? "")} onBlur={(event) => updateField("notes", event.currentTarget.value || null)} /></label></div>;
-  const testBody = <div className="module-detail-section"><h3>測試步驟、量測與簽核</h3>{canEdit && <div className="module-detail-actions"><button type="button" onClick={() => { const instruction = window.prompt("測試步驟"); if (instruction) void testAction({ action: "add_step", instruction }); }}>＋ 步驟</button><button type="button" onClick={() => { const name = window.prompt("量測名稱"); const value = Number(window.prompt("量測值", "0")); if (name && Number.isFinite(value)) void testAction({ action: "add_measurement", name, value, unit: window.prompt("單位（可留空）", "") || null }); }}>＋ 量測</button><button type="button" onClick={() => void testAction({ action: "sign", status: "APPROVED", note: window.prompt("簽核意見（可留空）", "") || null })}>核准簽核</button></div>}<h4>步驟</h4>{evidence?.steps.length ? evidence.steps.map((step) => <p key={step.id}>{step.status} · {step.instruction}{step.expected ? `（預期：${step.expected}）` : ""}</p>) : <p className="hint">尚無步驟。</p>}<h4>量測</h4>{evidence?.measurements.length ? evidence.measurements.map((item) => <p key={item.id}>{item.name}：{item.value} {item.unit || ""}</p>) : <p className="hint">尚無量測值。</p>}<h4>追溯需求</h4>{evidence?.requirements.length ? evidence.requirements.map((item) => <p key={item.requirement.key}>{item.requirement.key} · {item.requirement.title}</p>) : <p className="hint">尚未連結需求。</p>}<h4>簽核</h4>{evidence?.approvals.length ? evidence.approvals.map((item) => <p key={item.id}>{item.status} · {item.reviewer.name}{item.note ? ` · ${item.note}` : ""}</p>) : <p className="hint">尚無簽核。</p>}</div>;
-  return <section className="module-details"><header><div><p className="eyebrow">詳細資料</p><h2>{String(record.title || record.name || "紀錄")}</h2></div><button type="button" onClick={onClose}>關閉</button></header>{module === "tasks" ? taskBody : module === "bom" ? bomBody : module === "tests" ? testBody : <p>此議題的基本欄位可直接在列表啟用編輯後修改。</p>}{(module === "bom" || module === "tests") && <RecordAttachments projectId={projectId} module={module} recordId={record.id} canWrite={canEdit} />}{notice && <p className="collab-notice">{notice}</p>}</section>;
+  const [detailDialog, setDetailDialog] = useState<DetailDialog | null>(null);
+  const [worklogs, setWorklogs] = useState<
+    Array<{
+      id: string;
+      minutes: number;
+      note: string | null;
+      workDate: string;
+      user: { name: string };
+    }>
+  >([]);
+  const [evidence, setEvidence] = useState<{
+    steps: Array<{
+      id: string;
+      instruction: string;
+      expected: string | null;
+      status: string;
+    }>;
+    measurements: Array<{
+      id: string;
+      name: string;
+      value: number;
+      unit: string | null;
+    }>;
+    approvals: Array<{
+      id: string;
+      status: string;
+      note: string | null;
+      reviewer: { name: string };
+    }>;
+    requirements: Array<{ requirement: { key: string; title: string } }>;
+  } | null>(null);
+  useEffect(() => {
+    setNotice("");
+    if (module === "tasks")
+      void fetch(
+        `/api/projects/${projectId}/records/tasks/${record.id}/worklogs`,
+      )
+        .then((r) => (r.ok ? r.json() : []))
+        .then(setWorklogs);
+    if (module === "tests")
+      void fetch(
+        `/api/projects/${projectId}/records/tests/${record.id}/evidence`,
+      )
+        .then((r) => (r.ok ? r.json() : null))
+        .then(setEvidence);
+  }, [module, projectId, record.id]);
+  const updateField = (name: string, value: unknown) => {
+    if (canEdit) void onUpdate(record, { [name]: value });
+  };
+  async function addWorklog(values: Record<string, string>) {
+    const minutes = Number(values.minutes);
+    if (!Number.isInteger(minutes) || minutes < 1) {
+      setNotice("工時必須是大於零的整數分鐘");
+      return false;
+    }
+    try {
+      const response = await fetch(
+        `/api/projects/${projectId}/records/tasks/${record.id}/worklogs`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ minutes, note: values.note.trim() || null }),
+        },
+      );
+      const result = await response.json();
+      if (!response.ok) {
+        setNotice(result.error || "無法新增工時");
+        return false;
+      }
+      setWorklogs((current) => [result, ...current]);
+      return true;
+    } catch {
+      setNotice("無法新增工時，請檢查網路後重試");
+      return false;
+    }
+  }
+  async function testAction(body: Record<string, unknown>) {
+    const response = await fetch(
+      `/api/projects/${projectId}/records/tests/${record.id}/evidence`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    );
+    const result = await response.json();
+    if (!response.ok) {
+      setNotice(result.error || "無法儲存測試證據");
+      return false;
+    }
+    const refreshed = await fetch(
+      `/api/projects/${projectId}/records/tests/${record.id}/evidence`,
+    ).then((r) => (r.ok ? r.json() : null));
+    setEvidence(refreshed);
+    return true;
+  }
+  async function submitDetailDialog(values: Record<string, string>) {
+    if (detailDialog === "worklog") return addWorklog(values);
+    if (detailDialog === "test-step") {
+      const instruction = values.instruction.trim();
+      if (!instruction) {
+        setNotice("請輸入測試步驟");
+        return false;
+      }
+      return testAction({ action: "add_step", instruction });
+    }
+    if (detailDialog === "test-measurement") {
+      const name = values.name.trim();
+      const value = Number(values.value);
+      if (!name || !Number.isFinite(value)) {
+        setNotice("請輸入量測名稱與有效數值");
+        return false;
+      }
+      return testAction({
+        action: "add_measurement",
+        name,
+        value,
+        unit: values.unit.trim() || null,
+      });
+    }
+    if (detailDialog === "test-approval")
+      return testAction({
+        action: "sign",
+        status: "APPROVED",
+        note: values.note.trim() || null,
+      });
+    return false;
+  }
+  const input = (label: string, name: string, type = "text") => (
+    <label>
+      {label}
+      <input
+        disabled={!canEdit}
+        type={type}
+        defaultValue={
+          Array.isArray(record[name])
+            ? (record[name] as unknown[]).join(", ")
+            : String(record[name] ?? "")
+        }
+        onBlur={(event) =>
+          updateField(
+            name,
+            type === "number"
+              ? Number(event.currentTarget.value || 0)
+              : event.currentTarget.value || null,
+          )
+        }
+      />
+    </label>
+  );
+  const taskBody = (
+    <>
+      <div className="module-detail-grid">
+        <label>
+          父任務
+          <select
+            disabled={!canEdit}
+            value={String(record.parentId || "")}
+            onChange={(event) =>
+              updateField("parentId", event.target.value || null)
+            }
+          >
+            <option value="">無（最上層任務）</option>
+            {records
+              .filter((item) => item.id !== record.id)
+              .map((item) => (
+                <option key={item.id} value={item.id}>
+                  {String(item.title || "未命名任務")}
+                </option>
+              ))}
+          </select>
+        </label>
+        <label>
+          里程碑
+          <select
+            disabled={!canEdit}
+            value={String(Boolean(record.milestone))}
+            onChange={(event) =>
+              updateField("milestone", event.target.value === "true")
+            }
+          >
+            <option value="false">一般任務</option>
+            <option value="true">里程碑</option>
+          </select>
+        </label>
+        {input("週期規則", "recurrenceRule")}
+        <label>
+          SLA 到期日
+          <input
+            disabled={!canEdit}
+            type="date"
+            value={dateValue(record.slaDueAt)}
+            onChange={(event) =>
+              updateField("slaDueAt", event.target.value || null)
+            }
+          />
+        </label>
+      </div>
+      <div className="module-detail-section">
+        <h3>子任務</h3>
+        <p>
+          {records
+            .filter((item) => item.parentId === record.id)
+            .map((item) => String(item.title))
+            .join("、") || "尚無子任務。"}
+        </p>
+      </div>
+      <div className="module-detail-section">
+        <h3>工時紀錄</h3>
+        {canEdit && (
+          <button type="button" onClick={() => setDetailDialog("worklog")}>
+            ＋ 新增工時
+          </button>
+        )}
+        {worklogs.length ? (
+          worklogs.map((item) => (
+            <p key={item.id}>
+              {new Date(item.workDate).toLocaleDateString("zh-TW")} ·{" "}
+              {item.user.name} · {item.minutes} 分鐘
+              {item.note ? ` · ${item.note}` : ""}
+            </p>
+          ))
+        ) : (
+          <p className="hint">尚無工時紀錄。</p>
+        )}
+      </div>
+    </>
+  );
+  const bomBody = (
+    <div className="module-detail-grid">
+      {input("供應商料號", "supplierPartNumber")}
+      {input("庫存數量", "inventoryQuantity", "number")}
+      {input("補貨門檻", "reorderPoint", "number")}
+      {input("幣別（ISO）", "currency")}
+      {input("版本", "version")}
+      <label>
+        採購狀態
+        <select
+          disabled={!canEdit}
+          value={String(record.purchaseStatus || "NOT_REQUIRED")}
+          onChange={(event) =>
+            updateField("purchaseStatus", event.target.value)
+          }
+        >
+          {[
+            ["NOT_REQUIRED", "不需採購"],
+            ["PLANNED", "規劃中"],
+            ["REQUESTED", "請購中"],
+            ["ORDERED", "已下單"],
+            ["RECEIVED", "已到貨"],
+            ["CANCELLED", "已取消"],
+          ].map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        核准狀態
+        <select
+          disabled={!canEdit}
+          value={String(record.approvalStatus || "DRAFT")}
+          onChange={(event) =>
+            updateField("approvalStatus", event.target.value)
+          }
+        >
+          {[
+            ["DRAFT", "草稿"],
+            ["PENDING", "待核准"],
+            ["APPROVED", "已核准"],
+            ["REJECTED", "已拒絕"],
+          ].map(([value, label]) => (
+            <option key={value} value={value}>
+              {label}
+            </option>
+          ))}
+        </select>
+      </label>
+      {input("交期（日）", "leadTimeDays", "number")}
+      <label>
+        風險等級
+        <select
+          disabled={!canEdit}
+          value={String(record.riskLevel || 1)}
+          onChange={(event) =>
+            updateField("riskLevel", Number(event.target.value))
+          }
+        >
+          {[1, 2, 3, 4, 5].map((value) => (
+            <option key={value} value={value}>
+              R{value}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label>
+        替代料（逗號分隔）
+        <input
+          disabled={!canEdit}
+          defaultValue={
+            Array.isArray(record.alternatives)
+              ? record.alternatives.join(", ")
+              : ""
+          }
+          onBlur={(event) =>
+            updateField(
+              "alternatives",
+              event.currentTarget.value
+                .split(",")
+                .map((item) => item.trim())
+                .filter(Boolean),
+            )
+          }
+        />
+      </label>
+      <label>
+        採購備註
+        <textarea
+          disabled={!canEdit}
+          defaultValue={String(record.notes ?? "")}
+          onBlur={(event) =>
+            updateField("notes", event.currentTarget.value || null)
+          }
+        />
+      </label>
+    </div>
+  );
+  const testBody = (
+    <div className="module-detail-section">
+      <h3>測試步驟、量測與簽核</h3>
+      {canEdit && (
+        <div className="module-detail-actions">
+          <button type="button" onClick={() => setDetailDialog("test-step")}>
+            ＋ 步驟
+          </button>
+          <button
+            type="button"
+            onClick={() => setDetailDialog("test-measurement")}
+          >
+            ＋ 量測
+          </button>
+          <button
+            type="button"
+            onClick={() => setDetailDialog("test-approval")}
+          >
+            核准簽核
+          </button>
+        </div>
+      )}
+      <h4>步驟</h4>
+      {evidence?.steps.length ? (
+        evidence.steps.map((step) => (
+          <p key={step.id}>
+            {step.status} · {step.instruction}
+            {step.expected ? `（預期：${step.expected}）` : ""}
+          </p>
+        ))
+      ) : (
+        <p className="hint">尚無步驟。</p>
+      )}
+      <h4>量測</h4>
+      {evidence?.measurements.length ? (
+        evidence.measurements.map((item) => (
+          <p key={item.id}>
+            {item.name}：{item.value} {item.unit || ""}
+          </p>
+        ))
+      ) : (
+        <p className="hint">尚無量測值。</p>
+      )}
+      <h4>追溯需求</h4>
+      {evidence?.requirements.length ? (
+        evidence.requirements.map((item) => (
+          <p key={item.requirement.key}>
+            {item.requirement.key} · {item.requirement.title}
+          </p>
+        ))
+      ) : (
+        <p className="hint">尚未連結需求。</p>
+      )}
+      <h4>簽核</h4>
+      {evidence?.approvals.length ? (
+        evidence.approvals.map((item) => (
+          <p key={item.id}>
+            {item.status} · {item.reviewer.name}
+            {item.note ? ` · ${item.note}` : ""}
+          </p>
+        ))
+      ) : (
+        <p className="hint">尚無簽核。</p>
+      )}
+    </div>
+  );
+  return (
+    <section className="module-details">
+      <header>
+        <div>
+          <p className="eyebrow">詳細資料</p>
+          <h2>{String(record.title || record.name || "紀錄")}</h2>
+        </div>
+        <button type="button" onClick={onClose}>
+          關閉
+        </button>
+      </header>
+      {module === "tasks" ? (
+        taskBody
+      ) : module === "bom" ? (
+        bomBody
+      ) : module === "tests" ? (
+        testBody
+      ) : (
+        <p>此議題的基本欄位可直接在列表啟用編輯後修改。</p>
+      )}
+      {(module === "bom" || module === "tests") && (
+        <RecordAttachments
+          projectId={projectId}
+          module={module}
+          recordId={record.id}
+          canWrite={canEdit}
+        />
+      )}
+      {notice && <p className="collab-notice">{notice}</p>}
+      {detailDialog && (
+        <FormDialog
+          title={
+            detailDialog === "worklog"
+              ? "新增工時"
+              : detailDialog === "test-step"
+                ? "新增測試步驟"
+                : detailDialog === "test-measurement"
+                  ? "新增量測"
+                  : "核准簽核"
+          }
+          description={
+            detailDialog === "worklog"
+              ? "工時會記錄至目前任務。"
+              : detailDialog === "test-step"
+                ? "新增的步驟會出現在這份測試紀錄中。"
+                : detailDialog === "test-measurement"
+                  ? "量測值會保留在目前測試紀錄。"
+                  : "以目前登入成員的身分完成簽核。"
+          }
+          submitLabel={detailDialog === "test-approval" ? "核准簽核" : "新增"}
+          fields={
+            detailDialog === "worklog"
+              ? [
+                  {
+                    name: "minutes",
+                    label: "工時（分鐘）",
+                    type: "number",
+                    required: true,
+                    min: 1,
+                    step: 1,
+                  },
+                  {
+                    name: "note",
+                    label: "工作說明（可留空）",
+                    placeholder: "本次完成的工作",
+                  },
+                ]
+              : detailDialog === "test-step"
+                ? [
+                    {
+                      name: "instruction",
+                      label: "測試步驟",
+                      required: true,
+                      placeholder: "輸入操作步驟",
+                    },
+                  ]
+                : detailDialog === "test-measurement"
+                  ? [
+                      {
+                        name: "name",
+                        label: "量測名稱",
+                        required: true,
+                        placeholder: "例如：輸出電壓",
+                      },
+                      {
+                        name: "value",
+                        label: "量測值",
+                        type: "number",
+                        required: true,
+                        step: 0.001,
+                      },
+                      {
+                        name: "unit",
+                        label: "單位（可留空）",
+                        placeholder: "例如：V",
+                      },
+                    ]
+                  : [
+                      {
+                        name: "note",
+                        label: "簽核意見（可留空）",
+                        placeholder: "補充簽核說明",
+                      },
+                    ]
+          }
+          initialValues={
+            detailDialog === "worklog"
+              ? { minutes: "60" }
+              : detailDialog === "test-measurement"
+                ? { value: "0" }
+                : undefined
+          }
+          onCancel={() => setDetailDialog(null)}
+          onSubmit={submitDetailDialog}
+        />
+      )}
+    </section>
+  );
 }
