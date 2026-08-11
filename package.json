@@ -1,6 +1,6 @@
 {
   "name": "rocket-workspace",
-  "version": "0.1.88",
+  "version": "0.1.89",
   "private": true,
   "license": "AGPL-3.0-or-later",
   "packageManager": "pnpm@10.8.1",

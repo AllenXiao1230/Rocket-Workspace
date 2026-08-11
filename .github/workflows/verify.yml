@@ -41,16 +41,8 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: cp .env.example .env
-      - run: docker compose up -d --build app
-      - run: |
-          deadline=$((SECONDS + 150))
-          until curl --fail --silent http://127.0.0.1:3000/api/health; do
-            if (( SECONDS >= deadline )); then
-              docker compose logs --tail=100 app postgres minio
-              exit 1
-            fi
-            sleep 2
-          done
+      - run: docker compose up --detach --wait --wait-timeout 240 --build app
+      - run: curl --fail --silent --show-error --retry 5 --retry-delay 1 --retry-connrefused http://127.0.0.1:3000/api/health
       - run: pnpm test:integration:prepare
       - run: pnpm test:integration
       - if: always()
