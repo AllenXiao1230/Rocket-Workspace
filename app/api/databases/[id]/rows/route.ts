@@ -7,31 +7,110 @@ import { applyRowAutomations } from "@/lib/database-automations";
 import { AutomationTrigger } from "@prisma/client";
 import { validateRowValues } from "@/lib/database-validation";
 
-const pageSize = (value: string | null) => Math.min(250, Math.max(1, Number(value) || 100));
-export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const { id } = await params; const access = await databaseAccess(session.user.id, id); if (!access) return NextResponse.json({ error: "Not found" }, { status: 404 });
-  const url = new URL(request.url); const cursor = url.searchParams.get("cursor"); const take = pageSize(url.searchParams.get("take"));
-  const rows = await prisma.databaseRow.findMany({ where: { databaseId: id, deletedAt: null }, orderBy: [{ position: "asc" }, { id: "asc" }], take: take + 1, ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}) });
-  return NextResponse.json({ rows: rows.slice(0, take), nextCursor: rows.length > take ? rows[take - 1].id : null });
+const pageSize = (value: string | null) =>
+  Math.min(250, Math.max(1, Number(value) || 100));
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const session = await auth();
+  if (!session?.user?.id)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { id } = await params;
+  const access = await databaseAccess(session.user.id, id);
+  if (!access) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const url = new URL(request.url);
+  const cursor = url.searchParams.get("cursor");
+  const take = pageSize(url.searchParams.get("take"));
+  const rows = await prisma.databaseRow.findMany({
+    where: { databaseId: id, deletedAt: null },
+    orderBy: [{ position: "asc" }, { id: "asc" }],
+    take: take + 1,
+    ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
+  });
+  return NextResponse.json({
+    rows: rows.slice(0, take),
+    nextCursor: rows.length > take ? rows[take - 1].id : null,
+  });
 }
 
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const { id } = await params; const access = await databaseAccess(session.user.id, id);
-  if (!access || !canWrite(access.membership.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  const body = await request.json().catch(() => ({})); const properties = await prisma.databaseProperty.findMany({ where: { databaseId: id, deletedAt: null }, select: { id: true, name: true, type: true, options: true } }); const validation = validateRowValues(properties, body.values || {}); if (validation.issues.length) return NextResponse.json({ error: validation.issues[0].message, issues: validation.issues }, { status: 400 });
-  const automated = await applyRowAutomations(id, AutomationTrigger.ROW_CREATED, validation.values);
-  const finalValidation = validateRowValues(properties, automated.values); const generatedValidations = automated.createdRows.map((values) => validateRowValues(properties, values));
-  const issues = [...finalValidation.issues, ...generatedValidations.flatMap((result) => result.issues)]; if (issues.length) return NextResponse.json({ error: issues[0].message, issues }, { status: 400 });
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const session = await auth();
+  if (!session?.user?.id)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { id } = await params;
+  const access = await databaseAccess(session.user.id, id);
+  if (!access || !canWrite(access.membership.role))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const body = await request.json().catch(() => ({}));
+  const properties = await prisma.databaseProperty.findMany({
+    where: { databaseId: id, deletedAt: null },
+    select: { id: true, name: true, type: true, options: true },
+  });
+  const validation = validateRowValues(properties, body.values || {});
+  if (validation.issues.length)
+    return NextResponse.json(
+      { error: validation.issues[0].message, issues: validation.issues },
+      { status: 400 },
+    );
+  const automated = await applyRowAutomations(
+    id,
+    AutomationTrigger.ROW_CREATED,
+    validation.values,
+  );
+  const finalValidation = validateRowValues(properties, automated.values);
+  const generatedValidations = automated.createdRows.map((values) =>
+    validateRowValues(properties, values),
+  );
+  const issues = [
+    ...finalValidation.issues,
+    ...generatedValidations.flatMap((result) => result.issues),
+  ];
+  if (issues.length)
+    return NextResponse.json({ error: issues[0].message, issues }, { status: 400 });
   const { row, createdRows } = await prisma.$transaction(async (tx) => {
-    const max = await tx.databaseRow.aggregate({ where: { databaseId: id, deletedAt: null }, _max: { position: true } }); const position = (max._max.position ?? -1) + 1;
-    const row = await tx.databaseRow.create({ data: { databaseId: id, values: finalValidation.values as Prisma.InputJsonValue, position } });
+    const max = await tx.databaseRow.aggregate({
+      where: { databaseId: id, deletedAt: null },
+      _max: { position: true },
+    });
+    const position = (max._max.position ?? -1) + 1;
+    const row = await tx.databaseRow.create({
+      data: {
+        databaseId: id,
+        values: finalValidation.values as Prisma.InputJsonValue,
+        position,
+      },
+    });
     const createdRows = [];
-    for (const [index, generated] of generatedValidations.entries()) createdRows.push(await tx.databaseRow.create({ data: { databaseId: id, values: generated.values as Prisma.InputJsonValue, position: position + index + 1 } }));
-    for (const notification of automated.notifications) await tx.notification.create({ data: { userId: session.user.id, ...notification } });
+    for (const [index, generated] of generatedValidations.entries())
+      createdRows.push(
+        await tx.databaseRow.create({
+          data: {
+            databaseId: id,
+            values: generated.values as Prisma.InputJsonValue,
+            position: position + index + 1,
+          },
+        }),
+      );
+    for (const notification of automated.notifications)
+      await tx.notification.create({
+        data: { userId: session.user.id, ...notification },
+      });
     return { row, createdRows };
   });
-  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "database_row.created", entity: "database_row", entityId: row.id, workspaceId: access.database.project.workspaceId, projectId: access.database.projectId, metadata: { databaseId: id, automationCreatedRows: createdRows.length } } });
+  await prisma.auditEvent.create({
+    data: {
+      userId: session.user.id,
+      action: "database_row.created",
+      entity: "database_row",
+      entityId: row.id,
+      workspaceId: access.database.project.workspaceId,
+      projectId: access.database.projectId,
+      metadata: { databaseId: id, automationCreatedRows: createdRows.length },
+    },
+  });
   return NextResponse.json({ ...row, createdRows }, { status: 201 });
 }

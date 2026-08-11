@@ -23,9 +23,15 @@ export const Callout = Node.create({
       },
     };
   },
-  parseHTML() { return [{ tag: "div[data-callout]" }]; },
+  parseHTML() {
+    return [{ tag: "div[data-callout]" }];
+  },
   renderHTML({ HTMLAttributes }) {
-    return ["div", mergeAttributes({ "data-callout": "", class: "document-callout" }, HTMLAttributes), 0];
+    return [
+      "div",
+      mergeAttributes({ "data-callout": "", class: "document-callout" }, HTMLAttributes),
+      0,
+    ];
   },
 });
 
@@ -40,23 +46,39 @@ export const SecureEmbed = Node.create({
       url: {
         default: "",
         parseHTML: (element) => element.getAttribute("data-embed-url") || "",
-        renderHTML: (attributes) => ({ "data-embed-url": isSafeDocumentEmbedUrl(attributes.url) ? attributes.url : "" }),
+        renderHTML: (attributes) => ({
+          "data-embed-url": isSafeDocumentEmbedUrl(attributes.url) ? attributes.url : "",
+        }),
       },
       label: {
         default: "外部嵌入內容",
-        parseHTML: (element) => element.getAttribute("data-embed-label") || "外部嵌入內容",
-        renderHTML: (attributes) => ({ "data-embed-label": String(attributes.label || "外部嵌入內容").slice(0, 180) }),
+        parseHTML: (element) =>
+          element.getAttribute("data-embed-label") || "外部嵌入內容",
+        renderHTML: (attributes) => ({
+          "data-embed-label": String(attributes.label || "外部嵌入內容").slice(0, 180),
+        }),
       },
     };
   },
-  parseHTML() { return [{ tag: "figure[data-embed-url]" }]; },
+  parseHTML() {
+    return [{ tag: "figure[data-embed-url]" }];
+  },
   renderHTML({ HTMLAttributes }) {
     const url = String(HTMLAttributes["data-embed-url"] || "");
     const label = String(HTMLAttributes["data-embed-label"] || "外部嵌入內容");
     return [
       "figure",
       mergeAttributes({ class: "document-embed" }, HTMLAttributes),
-      ["iframe", { src: url, title: label, loading: "lazy", sandbox: "allow-scripts allow-same-origin allow-popups", referrerpolicy: "strict-origin-when-cross-origin" }],
+      [
+        "iframe",
+        {
+          src: url,
+          title: label,
+          loading: "lazy",
+          sandbox: "allow-scripts allow-same-origin allow-popups",
+          referrerpolicy: "strict-origin-when-cross-origin",
+        },
+      ],
       ["figcaption", {}, label],
     ];
   },

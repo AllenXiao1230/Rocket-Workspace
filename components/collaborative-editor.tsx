@@ -1,12 +1,6 @@
 "use client";
 
-import {
-  type ChangeEvent,
-  useCallback,
-  useEffect,
-  useRef,
-  useState,
-} from "react";
+import { type ChangeEvent, useCallback, useEffect, useRef, useState } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Collaboration from "@tiptap/extension-collaboration";
@@ -31,11 +25,7 @@ import { DocumentWorkflowPanel } from "@/components/document-workflow-panel";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { FormDialog } from "@/components/form-dialog";
 import { mergeMarkdown } from "@/lib/markdown-conflict";
-import {
-  Callout,
-  isSafeDocumentEmbedUrl,
-  SecureEmbed,
-} from "@/lib/editor-extensions";
+import { Callout, isSafeDocumentEmbedUrl, SecureEmbed } from "@/lib/editor-extensions";
 
 type DocumentData = {
   id: string;
@@ -90,9 +80,7 @@ export function CollaborativeEditor({
   const collaborationRoom = document.id.startsWith("notion-")
     ? `document-${document.id}-notion-markdown-v2`
     : `document-${document.id}`;
-  const [status, setStatus] = useState(
-    editable ? "正在連接協作服務…" : "檢視模式",
-  );
+  const [status, setStatus] = useState(editable ? "正在連接協作服務…" : "檢視模式");
   const [sourceMode, setSourceMode] = useState(false);
   const [sourceMarkdown, setSourceMarkdown] = useState(document.markdown || "");
   const [externalChanged, setExternalChanged] = useState(false);
@@ -103,19 +91,14 @@ export function CollaborativeEditor({
     x: 120,
     y: 180,
   });
-  const [tablePosition, setTablePosition] = useState<TablePosition | null>(
-    null,
-  );
-  const [contextMenu, setContextMenu] = useState<EditorContextMenu | null>(
-    null,
-  );
-  const [activeProvider, setActiveProvider] =
-    useState<WebsocketProvider | null>(null);
+  const [tablePosition, setTablePosition] = useState<TablePosition | null>(null);
+  const [contextMenu, setContextMenu] = useState<EditorContextMenu | null>(null);
+  const [activeProvider, setActiveProvider] = useState<WebsocketProvider | null>(null);
   const [onlineMembers, setOnlineMembers] = useState(0);
   const [imageDropActive, setImageDropActive] = useState(false);
-  const [insertDialog, setInsertDialog] = useState<
-    "link" | "image" | "embed" | null
-  >(null);
+  const [insertDialog, setInsertDialog] = useState<"link" | "image" | "embed" | null>(
+    null,
+  );
   const [reloadMarkdown, setReloadMarkdown] = useState<string | null>(null);
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -323,8 +306,8 @@ export function CollaborativeEditor({
         },
         handleDrop: (_, event, moved) => {
           if (moved || !editable) return false;
-          const images = Array.from(event.dataTransfer?.files || []).filter(
-            (file) => file.type.startsWith("image/"),
+          const images = Array.from(event.dataTransfer?.files || []).filter((file) =>
+            file.type.startsWith("image/"),
           );
           if (!images.length) return false;
           event.preventDefault();
@@ -333,8 +316,8 @@ export function CollaborativeEditor({
         },
         handlePaste: (_, event) => {
           if (!editable) return false;
-          const images = Array.from(event.clipboardData?.files || []).filter(
-            (file) => file.type.startsWith("image/"),
+          const images = Array.from(event.clipboardData?.files || []).filter((file) =>
+            file.type.startsWith("image/"),
           );
           if (!images.length) return false;
           event.preventDefault();
@@ -346,9 +329,7 @@ export function CollaborativeEditor({
         if (!current.isActive("table")) return setTablePosition(null);
         const dom = current.view.domAtPos(current.state.selection.from).node;
         const element =
-          dom.nodeType === Node.ELEMENT_NODE
-            ? (dom as HTMLElement)
-            : dom.parentElement;
+          dom.nodeType === Node.ELEMENT_NODE ? (dom as HTMLElement) : dom.parentElement;
         const table = element?.closest("table");
         const rect = table?.getBoundingClientRect();
         if (rect)
@@ -387,8 +368,7 @@ export function CollaborativeEditor({
           cache: "no-store",
         });
         const result = (await response.json()) as { externalChanged?: boolean };
-        if (!disposed && response.ok)
-          setExternalChanged(Boolean(result.externalChanged));
+        if (!disposed && response.ok) setExternalChanged(Boolean(result.externalChanged));
       } catch {
         /* keep editing available while the file check is offline */
       }
@@ -438,32 +418,25 @@ export function CollaborativeEditor({
           setStatus("檢視模式 · 權限保護的即時編輯已停用");
           return;
         }
-        const url =
-          process.env.NEXT_PUBLIC_COLLABORATION_URL || "ws://localhost:1234";
-        const nextProvider = new WebsocketProvider(
-          url,
-          collaborationRoom,
-          ydoc,
-          { params: { token } },
-        );
+        const url = process.env.NEXT_PUBLIC_COLLABORATION_URL || "ws://localhost:1234";
+        const nextProvider = new WebsocketProvider(url, collaborationRoom, ydoc, {
+          params: { token },
+        });
         provider.current = nextProvider;
         setActiveProvider(nextProvider);
-        nextProvider.on(
-          "status",
-          ({ status: nextStatus }: { status: string }) =>
-            setStatus(
-              nextStatus === "connected"
-                ? editable
-                  ? "已連線 · 即時協作已啟用"
-                  : "檢視模式 · 即時內容已連線"
-                : "協作服務重新連線中…",
-            ),
+        nextProvider.on("status", ({ status: nextStatus }: { status: string }) =>
+          setStatus(
+            nextStatus === "connected"
+              ? editable
+                ? "已連線 · 即時協作已啟用"
+                : "檢視模式 · 即時內容已連線"
+              : "協作服務重新連線中…",
+          ),
         );
         const updatePresence = () =>
           setOnlineMembers(
-            Array.from(nextProvider.awareness.getStates().values()).filter(
-              (value) =>
-                Boolean((value as { user?: { name?: string } }).user?.name),
+            Array.from(nextProvider.awareness.getStates().values()).filter((value) =>
+              Boolean((value as { user?: { name?: string } }).user?.name),
             ).length,
           );
         nextProvider.awareness.on("change", updatePresence);
@@ -482,9 +455,7 @@ export function CollaborativeEditor({
           // A websocket can briefly report "disconnected" while its initial
           // Yjs handshake is settling. A completed sync is the reliable
           // signal that this document is ready for collaboration.
-          setStatus(
-            editable ? "已連線 · 即時協作已啟用" : "檢視模式 · 即時內容已連線",
-          );
+          setStatus(editable ? "已連線 · 即時協作已啟用" : "檢視模式 · 即時內容已連線");
           queueMicrotask(seedEmptyDocument);
         });
         // A fast local connection can finish synchronising before the listener is
@@ -492,9 +463,7 @@ export function CollaborativeEditor({
         if (nextProvider.synced) queueMicrotask(seedEmptyDocument);
       } catch {
         setStatus(
-          editable
-            ? "協作服務不可用；仍會嘗試儲存內容。"
-            : "檢視模式 · 協作服務不可用",
+          editable ? "協作服務不可用；仍會嘗試儲存內容。" : "檢視模式 · 協作服務不可用",
         );
       }
     }
@@ -524,9 +493,7 @@ export function CollaborativeEditor({
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ title: title.trim() }),
-      }).then((response) =>
-        setStatus(response.ok ? "標題已儲存" : "標題未儲存"),
-      );
+      }).then((response) => setStatus(response.ok ? "標題已儲存" : "標題未儲存"));
     },
     [document.id, editable],
   );
@@ -552,12 +519,7 @@ export function CollaborativeEditor({
     const url = values.url.trim();
     if (!url) return false;
     if (insertDialog === "link") {
-      editor
-        ?.chain()
-        .focus()
-        .extendMarkRange("link")
-        .setLink({ href: url })
-        .run();
+      editor?.chain().focus().extendMarkRange("link").setLink({ href: url }).run();
       return true;
     }
     if (!isSafeDocumentEmbedUrl(url)) {
@@ -567,11 +529,7 @@ export function CollaborativeEditor({
       return false;
     }
     if (insertDialog === "image") {
-      editor
-        ?.chain()
-        .focus()
-        .setImage({ src: url, alt: values.label.trim() })
-        .run();
+      editor?.chain().focus().setImage({ src: url, alt: values.label.trim() }).run();
       return true;
     }
     editor
@@ -733,8 +691,7 @@ export function CollaborativeEditor({
     else if (kind === "heading") chain.toggleHeading({ level: 2 }).run();
     else if (kind === "task") chain.toggleTaskList().run();
     else if (kind === "quote") chain.toggleBlockquote().run();
-    else if (kind === "callout")
-      chain.wrapIn("callout", { tone: "info" }).run();
+    else if (kind === "callout") chain.wrapIn("callout", { tone: "info" }).run();
     else if (kind === "code") chain.toggleCodeBlock().run();
     else if (kind === "table")
       chain.insertTable({ rows: 3, cols: 3, withHeaderRow: true }).run();
@@ -830,9 +787,7 @@ export function CollaborativeEditor({
         <button
           className={editor?.isActive("bold") ? "active" : ""}
           disabled={!editable}
-          onClick={command(
-            () => editor?.chain().focus().toggleBold().run() || false,
-          )}
+          onClick={command(() => editor?.chain().focus().toggleBold().run() || false)}
           aria-label="粗體"
         >
           <b>B</b>
@@ -840,9 +795,7 @@ export function CollaborativeEditor({
         <button
           className={editor?.isActive("italic") ? "active" : ""}
           disabled={!editable}
-          onClick={command(
-            () => editor?.chain().focus().toggleItalic().run() || false,
-          )}
+          onClick={command(() => editor?.chain().focus().toggleItalic().run() || false)}
           aria-label="斜體"
         >
           <i>I</i>
@@ -860,9 +813,7 @@ export function CollaborativeEditor({
         <button
           className={editor?.isActive("strike") ? "active" : ""}
           disabled={!editable}
-          onClick={command(
-            () => editor?.chain().focus().toggleStrike().run() || false,
-          )}
+          onClick={command(() => editor?.chain().focus().toggleStrike().run() || false)}
           aria-label="刪除線"
         >
           S
@@ -870,9 +821,7 @@ export function CollaborativeEditor({
         <button
           disabled={!editable}
           onClick={command(
-            () =>
-              editor?.chain().focus().unsetAllMarks().clearNodes().run() ||
-              false,
+            () => editor?.chain().focus().unsetAllMarks().clearNodes().run() || false,
           )}
         >
           清除格式
@@ -882,9 +831,7 @@ export function CollaborativeEditor({
           className={editor?.isActive("heading", { level: 1 }) ? "active" : ""}
           disabled={!editable}
           onClick={command(
-            () =>
-              editor?.chain().focus().toggleHeading({ level: 1 }).run() ||
-              false,
+            () => editor?.chain().focus().toggleHeading({ level: 1 }).run() || false,
           )}
         >
           H1
@@ -893,9 +840,7 @@ export function CollaborativeEditor({
           className={editor?.isActive("heading", { level: 2 }) ? "active" : ""}
           disabled={!editable}
           onClick={command(
-            () =>
-              editor?.chain().focus().toggleHeading({ level: 2 }).run() ||
-              false,
+            () => editor?.chain().focus().toggleHeading({ level: 2 }).run() || false,
           )}
         >
           H2
@@ -904,9 +849,7 @@ export function CollaborativeEditor({
           className={editor?.isActive("heading", { level: 3 }) ? "active" : ""}
           disabled={!editable}
           onClick={command(
-            () =>
-              editor?.chain().focus().toggleHeading({ level: 3 }).run() ||
-              false,
+            () => editor?.chain().focus().toggleHeading({ level: 3 }).run() || false,
           )}
         >
           H3
@@ -932,9 +875,7 @@ export function CollaborativeEditor({
         <button
           className={editor?.isActive("taskList") ? "active" : ""}
           disabled={!editable}
-          onClick={command(
-            () => editor?.chain().focus().toggleTaskList().run() || false,
-          )}
+          onClick={command(() => editor?.chain().focus().toggleTaskList().run() || false)}
         >
           ☑ 待辦
         </button>
@@ -952,11 +893,7 @@ export function CollaborativeEditor({
           disabled={!editable}
           onClick={command(
             () =>
-              editor
-                ?.chain()
-                .focus()
-                .wrapIn("callout", { tone: "info" })
-                .run() || false,
+              editor?.chain().focus().wrapIn("callout", { tone: "info" }).run() || false,
           )}
         >
           ⓘ Callout
@@ -1025,18 +962,11 @@ export function CollaborativeEditor({
         <button onClick={openSource}>MD 原始碼</button>
         <button onClick={() => void reloadFromFile()}>讀取檔案</button>
         <button onClick={() => void copyMarkdown()}>複製 MD</button>
-        <a href={`/api/documents/${document.id}/markdown?download=1`}>
-          下載 .md
-        </a>
+        <a href={`/api/documents/${document.id}/markdown?download=1`}>下載 .md</a>
         {editable && (
           <>
-            <button onClick={() => onCreateSubpage?.(document.id)}>
-              ＋ 子頁面
-            </button>
-            <button
-              className="editor-danger"
-              onClick={() => setDeleteDialogOpen(true)}
-            >
+            <button onClick={() => onCreateSubpage?.(document.id)}>＋ 子頁面</button>
+            <button className="editor-danger" onClick={() => setDeleteDialogOpen(true)}>
               刪除頁面
             </button>
           </>
@@ -1066,9 +996,7 @@ export function CollaborativeEditor({
             <button onClick={() => insertBlock("task")}>☑ 待辦清單</button>
             <button onClick={() => insertBlock("quote")}>❝ 提示區塊</button>
             <button onClick={() => insertBlock("callout")}>ⓘ Callout</button>
-            <button onClick={() => insertBlock("uploadImage")}>
-              ⇧ 上傳圖片
-            </button>
+            <button onClick={() => insertBlock("uploadImage")}>⇧ 上傳圖片</button>
             <button onClick={() => insertBlock("image")}>▧ 圖片網址</button>
             <button onClick={() => insertBlock("embed")}>▣ 嵌入內容</button>
             <button onClick={() => insertBlock("table")}>▦ 表格</button>
@@ -1125,27 +1053,16 @@ export function CollaborativeEditor({
             onMouseDown={(event) => event.preventDefault()}
           >
             <span>表格操作</span>
-            <button onClick={() => tableAction("addColumnBefore")}>
-              欄＋左
-            </button>
-            <button onClick={() => tableAction("addColumnAfter")}>
-              欄＋右
-            </button>
+            <button onClick={() => tableAction("addColumnBefore")}>欄＋左</button>
+            <button onClick={() => tableAction("addColumnAfter")}>欄＋右</button>
             <button onClick={() => tableAction("deleteColumn")}>刪欄</button>
             <button onClick={() => tableAction("addRowBefore")}>列＋上</button>
             <button onClick={() => tableAction("addRowAfter")}>列＋下</button>
             <button onClick={() => tableAction("deleteRow")}>刪列</button>
-            <button onClick={() => tableAction("mergeCells")}>
-              合併儲存格
-            </button>
+            <button onClick={() => tableAction("mergeCells")}>合併儲存格</button>
             <button onClick={() => tableAction("splitCell")}>分割儲存格</button>
-            <button onClick={() => tableAction("toggleHeaderRow")}>
-              切換標題列
-            </button>
-            <button
-              className="editor-danger"
-              onClick={() => tableAction("deleteTable")}
-            >
+            <button onClick={() => tableAction("toggleHeaderRow")}>切換標題列</button>
+            <button className="editor-danger" onClick={() => tableAction("deleteTable")}>
               刪除表格
             </button>
           </div>
@@ -1161,20 +1078,11 @@ export function CollaborativeEditor({
           {contextMenu.kind === "table" ? (
             <>
               <strong>表格</strong>
-              <button onClick={() => tableAction("addRowAfter")}>
-                新增下一列
-              </button>
-              <button onClick={() => tableAction("addColumnAfter")}>
-                新增右側欄
-              </button>
-              <button onClick={() => tableAction("mergeCells")}>
-                合併儲存格
-              </button>
+              <button onClick={() => tableAction("addRowAfter")}>新增下一列</button>
+              <button onClick={() => tableAction("addColumnAfter")}>新增右側欄</button>
+              <button onClick={() => tableAction("mergeCells")}>合併儲存格</button>
               <button onClick={() => tableAction("deleteRow")}>刪除此列</button>
-              <button
-                className="danger"
-                onClick={() => tableAction("deleteTable")}
-              >
+              <button className="danger" onClick={() => tableAction("deleteTable")}>
                 刪除表格
               </button>
             </>
@@ -1216,9 +1124,7 @@ export function CollaborativeEditor({
           ) : (
             <>
               <strong>目前區塊</strong>
-              <button onClick={menuAction(() => insertBlock("heading"))}>
-                轉為標題
-              </button>
+              <button onClick={menuAction(() => insertBlock("heading"))}>轉為標題</button>
               <button
                 onClick={menuAction(() => {
                   editor?.chain().focus().toggleBulletList().run();
@@ -1226,15 +1132,9 @@ export function CollaborativeEditor({
               >
                 轉為清單
               </button>
-              <button onClick={menuAction(() => insertBlock("task"))}>
-                轉為待辦
-              </button>
-              <button onClick={menuAction(() => insertBlock("quote"))}>
-                轉為提示
-              </button>
-              <button onClick={menuAction(() => insertBlock("table"))}>
-                插入表格
-              </button>
+              <button onClick={menuAction(() => insertBlock("task"))}>轉為待辦</button>
+              <button onClick={menuAction(() => insertBlock("quote"))}>轉為提示</button>
+              <button onClick={menuAction(() => insertBlock("table"))}>插入表格</button>
             </>
           )}
         </div>
@@ -1246,12 +1146,8 @@ export function CollaborativeEditor({
             線上協作內容尚未被覆寫。你可比較三方基線；若兩邊都有改動，系統會以衝突標記保留兩個版本。
           </span>
           <div>
-            <button onClick={() => void previewThreeWayMerge()}>
-              三方合併預覽
-            </button>
-            <button onClick={() => void reloadFromFile()}>
-              檢視並載入檔案
-            </button>
+            <button onClick={() => void previewThreeWayMerge()}>三方合併預覽</button>
+            <button onClick={() => void reloadFromFile()}>檢視並載入檔案</button>
             {editable && (
               <button
                 className="markdown-conflict-keep"
@@ -1267,9 +1163,7 @@ export function CollaborativeEditor({
         <section className="markdown-source">
           <div>
             <strong>Markdown 原始碼</strong>
-            <span>
-              套用後會轉成可協作的區塊；不支援的語法會保留為一般文字。
-            </span>
+            <span>套用後會轉成可協作的區塊；不支援的語法會保留為一般文字。</span>
           </div>
           <textarea
             aria-label="Markdown 原始碼"
@@ -1284,10 +1178,7 @@ export function CollaborativeEditor({
                 套用 Markdown
               </button>
             )}
-            <button
-              className="source-close"
-              onClick={() => setSourceMode(false)}
-            >
+            <button className="source-close" onClick={() => setSourceMode(false)}>
               關閉
             </button>
           </footer>
@@ -1313,12 +1204,8 @@ export function CollaborativeEditor({
       {editable && (
         <div className="document-child-actions">
           <span>在此頁面下新增</span>
-          <button onClick={() => onCreateSubpage?.(document.id)}>
-            ＋ 子頁面
-          </button>
-          <button onClick={() => onCreateDatabase?.(document.id)}>
-            ▦ 資料庫
-          </button>
+          <button onClick={() => onCreateSubpage?.(document.id)}>＋ 子頁面</button>
+          <button onClick={() => onCreateDatabase?.(document.id)}>▦ 資料庫</button>
         </div>
       )}
       <DocumentWorkflowPanel
@@ -1326,10 +1213,7 @@ export function CollaborativeEditor({
         projectId={projectId}
         canWrite={editable}
       />
-      <DocumentCollaborationPanel
-        documentId={document.id}
-        canWrite={editable}
-      />
+      <DocumentCollaborationPanel documentId={document.id} canWrite={editable} />
       <DocumentAttachments
         documentId={document.id}
         canWrite={editable}
@@ -1347,10 +1231,49 @@ export function CollaborativeEditor({
       />
       {insertDialog && (
         <FormDialog
-          title={insertDialog === "link" ? "加入連結" : insertDialog === "image" ? "插入圖片網址" : "嵌入外部內容"}
-          description={insertDialog === "link" ? "會套用至目前選取的文字。" : "僅接受有效的 HTTPS 公開網址。"}
+          title={
+            insertDialog === "link"
+              ? "加入連結"
+              : insertDialog === "image"
+                ? "插入圖片網址"
+                : "嵌入外部內容"
+          }
+          description={
+            insertDialog === "link"
+              ? "會套用至目前選取的文字。"
+              : "僅接受有效的 HTTPS 公開網址。"
+          }
           submitLabel={insertDialog === "link" ? "套用連結" : "插入"}
-          fields={insertDialog === "link" ? [{ name: "url", label: "連結網址", type: "url", required: true, placeholder: "https://example.com" }] : [{ name: "url", label: insertDialog === "image" ? "圖片網址" : "嵌入網址", type: "url", required: true, placeholder: "https://example.com" }, { name: "label", label: insertDialog === "image" ? "圖片替代文字（可留空）" : "嵌入標題（可留空）", placeholder: insertDialog === "image" ? "描述圖片內容" : "外部嵌入內容" }]}
+          fields={
+            insertDialog === "link"
+              ? [
+                  {
+                    name: "url",
+                    label: "連結網址",
+                    type: "url",
+                    required: true,
+                    placeholder: "https://example.com",
+                  },
+                ]
+              : [
+                  {
+                    name: "url",
+                    label: insertDialog === "image" ? "圖片網址" : "嵌入網址",
+                    type: "url",
+                    required: true,
+                    placeholder: "https://example.com",
+                  },
+                  {
+                    name: "label",
+                    label:
+                      insertDialog === "image"
+                        ? "圖片替代文字（可留空）"
+                        : "嵌入標題（可留空）",
+                    placeholder:
+                      insertDialog === "image" ? "描述圖片內容" : "外部嵌入內容",
+                  },
+                ]
+          }
           onCancel={() => setInsertDialog(null)}
           onSubmit={applyInsert}
         />
@@ -1361,7 +1284,10 @@ export function CollaborativeEditor({
           description="系統會先保存目前版本，再以資料夾中的 Markdown 取代編輯器內容。"
           confirmLabel="載入並覆蓋"
           destructive
-          onCancel={() => { setReloadMarkdown(null); setSourceMode(true); }}
+          onCancel={() => {
+            setReloadMarkdown(null);
+            setSourceMode(true);
+          }}
           onConfirm={applyReloadFromFile}
         />
       )}
@@ -1372,7 +1298,10 @@ export function CollaborativeEditor({
           confirmLabel="移至回收桶"
           destructive
           onCancel={() => setDeleteDialogOpen(false)}
-          onConfirm={() => { setDeleteDialogOpen(false); onDelete?.(); }}
+          onConfirm={() => {
+            setDeleteDialogOpen(false);
+            onDelete?.();
+          }}
         />
       )}
     </article>

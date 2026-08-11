@@ -3,12 +3,123 @@
 import { useState } from "react";
 import type { TeamMember } from "@/components/team-management";
 
-export type WorkspaceTask = { id: string; title: string; status: string; priority: number; assigneeId?: string | null; assignee?: { id: string; name: string; email: string } | null };
+export type WorkspaceTask = {
+  id: string;
+  title: string;
+  status: string;
+  priority: number;
+  assigneeId?: string | null;
+  assignee?: { id: string; name: string; email: string } | null;
+};
 const displayName = (member: TeamMember) => member.nickname || member.user.name;
 
-export function TaskBoard({ projectId, initialTasks, members, canWrite }: { projectId: string; initialTasks: WorkspaceTask[]; members: TeamMember[]; canWrite: boolean }) {
-  const [tasks, setTasks] = useState(initialTasks); const [title, setTitle] = useState(""); const [assigneeId, setAssigneeId] = useState(""); const [notice, setNotice] = useState("");
-  async function addTask(event: React.FormEvent<HTMLFormElement>) { event.preventDefault(); if (!title.trim()) return; const response = await fetch(`/api/projects/${projectId}/records/tasks`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ title: title.trim(), assigneeId: assigneeId || null }) }); const result = await response.json(); if (!response.ok) return setNotice(result.error || "無法新增任務"); setTasks((current) => [result, ...current]); setTitle(""); setAssigneeId(""); setNotice("任務已建立"); }
-  async function assign(task: WorkspaceTask, nextAssigneeId: string) { const response = await fetch(`/api/projects/${projectId}/records/tasks/${task.id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ assigneeId: nextAssigneeId || null }) }); const result = await response.json(); if (!response.ok) return setNotice(result.error || "無法更新負責人"); setTasks((current) => current.map((item) => item.id === task.id ? result : item)); setNotice("負責人已更新"); }
-  return <section className="module-view task-page"><div className="module-hero"><div><p className="eyebrow">專案模組 · 任務</p><h1>任務</h1><p>每項任務可指定一位工作空間成員為負責人。</p></div><span className="overview-badge">{tasks.length} 項任務</span></div>{canWrite ? <form className="task-create" onSubmit={addTask}><input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="新增任務名稱" required /><select value={assigneeId} onChange={(event) => setAssigneeId(event.target.value)}><option value="">未指派</option>{members.map((member) => <option value={member.user.id} key={member.id}>{displayName(member)}</option>)}</select><button type="submit">新增任務</button></form> : <p className="hint task-readonly">你目前為檢視者，只能查看任務與負責人。</p>}<div className="task-table"><div className="task-row task-header"><span>任務</span><span>狀態</span><span>優先級</span><span>負責人</span></div>{tasks.length ? tasks.map((task) => <div className="task-row" key={task.id}><strong>{task.title}</strong><span className="record-state">{task.status.replaceAll("_", " ")}</span><span>P{task.priority}</span><select value={task.assigneeId || ""} disabled={!canWrite} onChange={(event) => void assign(task, event.target.value)}><option value="">未指派</option>{members.map((member) => <option value={member.user.id} key={member.id}>{displayName(member)}</option>)}</select></div>) : <div className="empty">尚無任務</div>}</div>{notice && <span className="collab-notice">{notice}</span>}</section>;
+export function TaskBoard({
+  projectId,
+  initialTasks,
+  members,
+  canWrite,
+}: {
+  projectId: string;
+  initialTasks: WorkspaceTask[];
+  members: TeamMember[];
+  canWrite: boolean;
+}) {
+  const [tasks, setTasks] = useState(initialTasks);
+  const [title, setTitle] = useState("");
+  const [assigneeId, setAssigneeId] = useState("");
+  const [notice, setNotice] = useState("");
+  async function addTask(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!title.trim()) return;
+    const response = await fetch(`/api/projects/${projectId}/records/tasks`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ title: title.trim(), assigneeId: assigneeId || null }),
+    });
+    const result = await response.json();
+    if (!response.ok) return setNotice(result.error || "無法新增任務");
+    setTasks((current) => [result, ...current]);
+    setTitle("");
+    setAssigneeId("");
+    setNotice("任務已建立");
+  }
+  async function assign(task: WorkspaceTask, nextAssigneeId: string) {
+    const response = await fetch(`/api/projects/${projectId}/records/tasks/${task.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ assigneeId: nextAssigneeId || null }),
+    });
+    const result = await response.json();
+    if (!response.ok) return setNotice(result.error || "無法更新負責人");
+    setTasks((current) => current.map((item) => (item.id === task.id ? result : item)));
+    setNotice("負責人已更新");
+  }
+  return (
+    <section className="module-view task-page">
+      <div className="module-hero">
+        <div>
+          <p className="eyebrow">專案模組 · 任務</p>
+          <h1>任務</h1>
+          <p>每項任務可指定一位工作空間成員為負責人。</p>
+        </div>
+        <span className="overview-badge">{tasks.length} 項任務</span>
+      </div>
+      {canWrite ? (
+        <form className="task-create" onSubmit={addTask}>
+          <input
+            value={title}
+            onChange={(event) => setTitle(event.target.value)}
+            placeholder="新增任務名稱"
+            required
+          />
+          <select
+            value={assigneeId}
+            onChange={(event) => setAssigneeId(event.target.value)}
+          >
+            <option value="">未指派</option>
+            {members.map((member) => (
+              <option value={member.user.id} key={member.id}>
+                {displayName(member)}
+              </option>
+            ))}
+          </select>
+          <button type="submit">新增任務</button>
+        </form>
+      ) : (
+        <p className="hint task-readonly">你目前為檢視者，只能查看任務與負責人。</p>
+      )}
+      <div className="task-table">
+        <div className="task-row task-header">
+          <span>任務</span>
+          <span>狀態</span>
+          <span>優先級</span>
+          <span>負責人</span>
+        </div>
+        {tasks.length ? (
+          tasks.map((task) => (
+            <div className="task-row" key={task.id}>
+              <strong>{task.title}</strong>
+              <span className="record-state">{task.status.replaceAll("_", " ")}</span>
+              <span>P{task.priority}</span>
+              <select
+                value={task.assigneeId || ""}
+                disabled={!canWrite}
+                onChange={(event) => void assign(task, event.target.value)}
+              >
+                <option value="">未指派</option>
+                {members.map((member) => (
+                  <option value={member.user.id} key={member.id}>
+                    {displayName(member)}
+                  </option>
+                ))}
+              </select>
+            </div>
+          ))
+        ) : (
+          <div className="empty">尚無任務</div>
+        )}
+      </div>
+      {notice && <span className="collab-notice">{notice}</span>}
+    </section>
+  );
 }

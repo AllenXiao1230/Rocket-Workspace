@@ -3,7 +3,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const fs = vi.hoisted(() => ({ mkdir: vi.fn(), stat: vi.fn(), writeFile: vi.fn() }));
 vi.mock("node:fs/promises", () => fs);
 
-import { checkSchedulerHeartbeat, recordSchedulerHeartbeat } from "@/lib/scheduler-heartbeat";
+import {
+  checkSchedulerHeartbeat,
+  recordSchedulerHeartbeat,
+} from "@/lib/scheduler-heartbeat";
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -19,6 +22,8 @@ describe("scheduler heartbeat", () => {
     await expect(checkSchedulerHeartbeat()).resolves.toBeUndefined();
 
     fs.stat.mockResolvedValueOnce({ mtimeMs: Date.now() - 1_000_000 });
-    await expect(checkSchedulerHeartbeat()).rejects.toThrow("Scheduler heartbeat is stale");
+    await expect(checkSchedulerHeartbeat()).rejects.toThrow(
+      "Scheduler heartbeat is stale",
+    );
   });
 });

@@ -9,12 +9,17 @@ describe("collaboration readiness", () => {
     vi.stubGlobal("fetch", fetch);
 
     await expect(checkCollaborationService()).resolves.toBeUndefined();
-    expect(fetch).toHaveBeenCalledWith("http://collab:1234/", expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    expect(fetch).toHaveBeenCalledWith(
+      "http://collab:1234/",
+      expect.objectContaining({ signal: expect.any(AbortSignal) }),
+    );
   });
 
   it("rejects an unhealthy collaboration response", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false }));
 
-    await expect(checkCollaborationService()).rejects.toThrow("Collaboration service health check failed");
+    await expect(checkCollaborationService()).rejects.toThrow(
+      "Collaboration service health check failed",
+    );
   });
 });

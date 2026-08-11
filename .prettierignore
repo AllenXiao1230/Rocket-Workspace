@@ -1,0 +1,9 @@
+.next/
+.agents/
+coverage/
+node_modules/
+backups/
+workspace-data/
+pnpm-lock.yaml
+public/
+prisma/migrations/

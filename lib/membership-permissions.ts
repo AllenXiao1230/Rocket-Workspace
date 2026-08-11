@@ -10,7 +10,8 @@ export function canChangeMembershipRole(
   nextRole: WorkspaceRole,
   ownerCount: number,
 ) {
-  if (requester !== "OWNER" && (currentRole === "OWNER" || nextRole === "OWNER")) return false;
+  if (requester !== "OWNER" && (currentRole === "OWNER" || nextRole === "OWNER"))
+    return false;
   if (currentRole === "OWNER" && nextRole !== "OWNER" && ownerCount <= 1) return false;
   return true;
 }

@@ -7,11 +7,7 @@ import type { TeamMember } from "@/components/team-management";
 import { RecordAttachments } from "@/components/record-attachments";
 
 export type ProjectModule = "tasks" | "issues" | "bom" | "tests";
-type DetailDialog =
-  | "worklog"
-  | "test-step"
-  | "test-measurement"
-  | "test-approval";
+type DetailDialog = "worklog" | "test-step" | "test-measurement" | "test-approval";
 export type ModuleRecord = {
   id: string;
   updatedAt?: string | Date;
@@ -33,8 +29,7 @@ const moduleText = {
   bom: { title: "物料清單", hint: "管理料號、數量、供應商與採購狀態" },
   tests: { title: "測試紀錄", hint: "記錄測試結果、日期、操作人與備註" },
 };
-const displayMember = (member: TeamMember) =>
-  member.nickname || member.user.name;
+const displayMember = (member: TeamMember) => member.nickname || member.user.name;
 const dateValue = (value: unknown) =>
   value ? new Date(String(value)).toISOString().slice(0, 10) : "";
 
@@ -67,9 +62,7 @@ export function ProjectModuleBoard({
   const [trashed, setTrashed] = useState<TrashedRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
-  const [pendingRemoval, setPendingRemoval] = useState<ModuleRecord | null>(
-    null,
-  );
+  const [pendingRemoval, setPendingRemoval] = useState<ModuleRecord | null>(null);
   const onRecordsChangeRef = useRef(onRecordsChange);
   onRecordsChangeRef.current = onRecordsChange;
   const info = moduleText[module];
@@ -128,8 +121,7 @@ export function ProjectModuleBoard({
   ) {
     const response = await fetch(path, {
       method,
-      headers:
-        body === undefined ? undefined : { "Content-Type": "application/json" },
+      headers: body === undefined ? undefined : { "Content-Type": "application/json" },
       body: body === undefined ? undefined : JSON.stringify(body),
     });
     const result = await response.json();
@@ -139,8 +131,7 @@ export function ProjectModuleBoard({
   async function create() {
     if (!title.trim()) return;
     try {
-      const data =
-        module === "bom" ? { name: title.trim() } : { title: title.trim() };
+      const data = module === "bom" ? { name: title.trim() } : { title: title.trim() };
       const record = await request(
         `/api/projects/${projectId}/records/${module}`,
         "POST",
@@ -160,19 +151,16 @@ export function ProjectModuleBoard({
         "PATCH",
         values,
       );
-      commitRecords(
-        records.map((item) => (item.id === record.id ? saved : item)),
-      );
+      commitRecords(records.map((item) => (item.id === record.id ? saved : item)));
       setNotice("已儲存");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "變更尚未儲存");
     }
   }
   async function loadTrash() {
-    const response = await fetch(
-      `/api/projects/${projectId}/records/${module}/recycle`,
-      { cache: "no-store" },
-    );
+    const response = await fetch(`/api/projects/${projectId}/records/${module}/recycle`, {
+      cache: "no-store",
+    });
     if (!response.ok) return setNotice("無法讀取回收桶");
     setTrashed(await response.json());
   }
@@ -284,10 +272,7 @@ export function ProjectModuleBoard({
   );
   const removeButton = (record: ModuleRecord) =>
     canEdit ? (
-      <button
-        className="module-delete"
-        onClick={() => setPendingRemoval(record)}
-      >
+      <button className="module-delete" onClick={() => setPendingRemoval(record)}>
         移至回收桶
       </button>
     ) : null;
@@ -302,9 +287,7 @@ export function ProjectModuleBoard({
   const dependencyIds = (record: ModuleRecord) =>
     Array.isArray(record.dependencies)
       ? record.dependencies
-          .map(
-            (item) => (item as { dependsOn?: { id?: string } }).dependsOn?.id,
-          )
+          .map((item) => (item as { dependsOn?: { id?: string } }).dependsOn?.id)
           .filter((id): id is string => Boolean(id))
       : [];
   async function updateDependencies(record: ModuleRecord, ids: string[]) {
@@ -319,9 +302,7 @@ export function ProjectModuleBoard({
       );
       const result = await response.json();
       if (!response.ok) throw new Error(result.error || "前置任務未儲存");
-      commitRecords(
-        records.map((item) => (item.id === record.id ? result : item)),
-      );
+      commitRecords(records.map((item) => (item.id === record.id ? result : item)));
       setNotice("前置任務已儲存");
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "前置任務未儲存");
@@ -337,10 +318,7 @@ export function ProjectModuleBoard({
       onChange={(event) =>
         void updateDependencies(
           record,
-          Array.from(
-            event.currentTarget.selectedOptions,
-            (option) => option.value,
-          ),
+          Array.from(event.currentTarget.selectedOptions, (option) => option.value),
         )
       }
     >
@@ -531,18 +509,14 @@ export function ProjectModuleBoard({
                 if (canEdit) event.preventDefault();
               }}
               onDrop={() => {
-                const record = records.find(
-                  (item) => item.id === draggedTaskId,
-                );
+                const record = records.find((item) => item.id === draggedTaskId);
                 if (record) void update(record, { status });
                 setDraggedTaskId(null);
               }}
             >
               <h3>
                 {label}
-                <small>
-                  {records.filter((item) => item.status === status).length}
-                </small>
+                <small>{records.filter((item) => item.status === status).length}</small>
               </h3>
               {records
                 .filter((item) => item.status === status)
@@ -579,9 +553,7 @@ export function ProjectModuleBoard({
         <div className="module-hero-actions">
           {editable && (
             <button
-              className={
-                canEdit ? "module-edit-toggle active" : "module-edit-toggle"
-              }
+              className={canEdit ? "module-edit-toggle active" : "module-edit-toggle"}
               onClick={() => setEditMode((current) => !current)}
             >
               {canEdit ? "✓ 完成編輯" : "✎ 啟用編輯"}
@@ -610,9 +582,7 @@ export function ProjectModuleBoard({
           <input
             value={title}
             onChange={(event) => setTitle(event.target.value)}
-            placeholder={
-              module === "bom" ? "新增物料名稱" : `新增${info.title}`
-            }
+            placeholder={module === "bom" ? "新增物料名稱" : `新增${info.title}`}
             required
           />
           <button type="submit">＋ 新增</button>
@@ -665,10 +635,7 @@ export function ProjectModuleBoard({
                   </small>
                 </span>
                 {canEdit && (
-                  <button
-                    className="collab-primary"
-                    onClick={() => void restore(record)}
-                  >
+                  <button className="collab-primary" onClick={() => void restore(record)}>
                     還原
                   </button>
                 )}
@@ -713,10 +680,7 @@ function ModuleRecordDetails({
   records: ModuleRecord[];
   canEdit: boolean;
   onClose: () => void;
-  onUpdate: (
-    record: ModuleRecord,
-    values: Record<string, unknown>,
-  ) => Promise<void>;
+  onUpdate: (record: ModuleRecord, values: Record<string, unknown>) => Promise<void>;
 }) {
   const [notice, setNotice] = useState("");
   const [detailDialog, setDetailDialog] = useState<DetailDialog | null>(null);
@@ -753,15 +717,11 @@ function ModuleRecordDetails({
   useEffect(() => {
     setNotice("");
     if (module === "tasks")
-      void fetch(
-        `/api/projects/${projectId}/records/tasks/${record.id}/worklogs`,
-      )
+      void fetch(`/api/projects/${projectId}/records/tasks/${record.id}/worklogs`)
         .then((r) => (r.ok ? r.json() : []))
         .then(setWorklogs);
     if (module === "tests")
-      void fetch(
-        `/api/projects/${projectId}/records/tests/${record.id}/evidence`,
-      )
+      void fetch(`/api/projects/${projectId}/records/tests/${record.id}/evidence`)
         .then((r) => (r.ok ? r.json() : null))
         .then(setEvidence);
   }, [module, projectId, record.id]);
@@ -877,9 +837,7 @@ function ModuleRecordDetails({
           <select
             disabled={!canEdit}
             value={String(record.parentId || "")}
-            onChange={(event) =>
-              updateField("parentId", event.target.value || null)
-            }
+            onChange={(event) => updateField("parentId", event.target.value || null)}
           >
             <option value="">無（最上層任務）</option>
             {records
@@ -896,9 +854,7 @@ function ModuleRecordDetails({
           <select
             disabled={!canEdit}
             value={String(Boolean(record.milestone))}
-            onChange={(event) =>
-              updateField("milestone", event.target.value === "true")
-            }
+            onChange={(event) => updateField("milestone", event.target.value === "true")}
           >
             <option value="false">一般任務</option>
             <option value="true">里程碑</option>
@@ -911,9 +867,7 @@ function ModuleRecordDetails({
             disabled={!canEdit}
             type="date"
             value={dateValue(record.slaDueAt)}
-            onChange={(event) =>
-              updateField("slaDueAt", event.target.value || null)
-            }
+            onChange={(event) => updateField("slaDueAt", event.target.value || null)}
           />
         </label>
       </div>
@@ -936,8 +890,8 @@ function ModuleRecordDetails({
         {worklogs.length ? (
           worklogs.map((item) => (
             <p key={item.id}>
-              {new Date(item.workDate).toLocaleDateString("zh-TW")} ·{" "}
-              {item.user.name} · {item.minutes} 分鐘
+              {new Date(item.workDate).toLocaleDateString("zh-TW")} · {item.user.name} ·{" "}
+              {item.minutes} 分鐘
               {item.note ? ` · ${item.note}` : ""}
             </p>
           ))
@@ -959,9 +913,7 @@ function ModuleRecordDetails({
         <select
           disabled={!canEdit}
           value={String(record.purchaseStatus || "NOT_REQUIRED")}
-          onChange={(event) =>
-            updateField("purchaseStatus", event.target.value)
-          }
+          onChange={(event) => updateField("purchaseStatus", event.target.value)}
         >
           {[
             ["NOT_REQUIRED", "不需採購"],
@@ -982,9 +934,7 @@ function ModuleRecordDetails({
         <select
           disabled={!canEdit}
           value={String(record.approvalStatus || "DRAFT")}
-          onChange={(event) =>
-            updateField("approvalStatus", event.target.value)
-          }
+          onChange={(event) => updateField("approvalStatus", event.target.value)}
         >
           {[
             ["DRAFT", "草稿"],
@@ -1004,9 +954,7 @@ function ModuleRecordDetails({
         <select
           disabled={!canEdit}
           value={String(record.riskLevel || 1)}
-          onChange={(event) =>
-            updateField("riskLevel", Number(event.target.value))
-          }
+          onChange={(event) => updateField("riskLevel", Number(event.target.value))}
         >
           {[1, 2, 3, 4, 5].map((value) => (
             <option key={value} value={value}>
@@ -1020,9 +968,7 @@ function ModuleRecordDetails({
         <input
           disabled={!canEdit}
           defaultValue={
-            Array.isArray(record.alternatives)
-              ? record.alternatives.join(", ")
-              : ""
+            Array.isArray(record.alternatives) ? record.alternatives.join(", ") : ""
           }
           onBlur={(event) =>
             updateField(
@@ -1040,9 +986,7 @@ function ModuleRecordDetails({
         <textarea
           disabled={!canEdit}
           defaultValue={String(record.notes ?? "")}
-          onBlur={(event) =>
-            updateField("notes", event.currentTarget.value || null)
-          }
+          onBlur={(event) => updateField("notes", event.currentTarget.value || null)}
         />
       </label>
     </div>
@@ -1055,16 +999,10 @@ function ModuleRecordDetails({
           <button type="button" onClick={() => setDetailDialog("test-step")}>
             ＋ 步驟
           </button>
-          <button
-            type="button"
-            onClick={() => setDetailDialog("test-measurement")}
-          >
+          <button type="button" onClick={() => setDetailDialog("test-measurement")}>
             ＋ 量測
           </button>
-          <button
-            type="button"
-            onClick={() => setDetailDialog("test-approval")}
-          >
+          <button type="button" onClick={() => setDetailDialog("test-approval")}>
             核准簽核
           </button>
         </div>

@@ -11,11 +11,31 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Rocket Workspace · Mission Control",
     description: "Self-hosted collaborative project workspace",
-    images: [{ url: "/og.png", width: 1731, height: 909, alt: "Rocket Workspace Mission Control" }],
+    images: [
+      {
+        url: "/og.png",
+        width: 1731,
+        height: 909,
+        alt: "Rocket Workspace Mission Control",
+      },
+    ],
   },
-  twitter: { card: "summary_large_image", title: "Rocket Workspace · Mission Control", images: ["/og.png"] },
+  twitter: {
+    card: "summary_large_image",
+    title: "Rocket Workspace · Mission Control",
+    images: ["/og.png"],
+  },
 };
 
-export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="zh-Hant" suppressHydrationWarning><body>{children}<ThemeToggle /></body></html>;
+export default function RootLayout({
+  children,
+}: Readonly<{ children: React.ReactNode }>) {
+  return (
+    <html lang="zh-Hant" suppressHydrationWarning>
+      <body>
+        {children}
+        <ThemeToggle />
+      </body>
+    </html>
+  );
 }

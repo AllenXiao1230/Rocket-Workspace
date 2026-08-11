@@ -5,12 +5,47 @@ import { prisma } from "@/lib/prisma";
 import { canWrite, databaseAccess } from "@/lib/permissions";
 
 const schema = z.object({ rowIds: z.array(z.string().cuid()).min(1).max(10_000) });
-export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const { id } = await params; const access = await databaseAccess(session.user.id, id); if (!access || !canWrite(access.membership.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
-  const parsed = schema.safeParse(await request.json().catch(() => null)); if (!parsed.success || new Set(parsed.data.rowIds).size !== parsed.data.rowIds.length) return NextResponse.json({ error: "列排序資料不正確" }, { status: 400 });
-  const rows = await prisma.databaseRow.findMany({ where: { databaseId: id, deletedAt: null }, select: { id: true } }); if (rows.length !== parsed.data.rowIds.length || rows.some((row) => !parsed.data.rowIds.includes(row.id))) return NextResponse.json({ error: "列清單已變更，請重新整理後再試" }, { status: 409 });
-  await prisma.$transaction(parsed.data.rowIds.map((rowId, position) => prisma.databaseRow.update({ where: { id: rowId }, data: { position } })));
-  await prisma.auditEvent.create({ data: { userId: session.user.id, action: "database_row.reordered", entity: "database", entityId: id, workspaceId: access.database.project.workspaceId, projectId: access.database.projectId, metadata: { rowCount: parsed.data.rowIds.length } } });
+export async function PATCH(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const session = await auth();
+  if (!session?.user?.id)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { id } = await params;
+  const access = await databaseAccess(session.user.id, id);
+  if (!access || !canWrite(access.membership.role))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const parsed = schema.safeParse(await request.json().catch(() => null));
+  if (!parsed.success || new Set(parsed.data.rowIds).size !== parsed.data.rowIds.length)
+    return NextResponse.json({ error: "列排序資料不正確" }, { status: 400 });
+  const rows = await prisma.databaseRow.findMany({
+    where: { databaseId: id, deletedAt: null },
+    select: { id: true },
+  });
+  if (
+    rows.length !== parsed.data.rowIds.length ||
+    rows.some((row) => !parsed.data.rowIds.includes(row.id))
+  )
+    return NextResponse.json(
+      { error: "列清單已變更，請重新整理後再試" },
+      { status: 409 },
+    );
+  await prisma.$transaction(
+    parsed.data.rowIds.map((rowId, position) =>
+      prisma.databaseRow.update({ where: { id: rowId }, data: { position } }),
+    ),
+  );
+  await prisma.auditEvent.create({
+    data: {
+      userId: session.user.id,
+      action: "database_row.reordered",
+      entity: "database",
+      entityId: id,
+      workspaceId: access.database.project.workspaceId,
+      projectId: access.database.projectId,
+      metadata: { rowCount: parsed.data.rowIds.length },
+    },
+  });
   return NextResponse.json({ ok: true });
 }

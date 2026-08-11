@@ -200,14 +200,10 @@ function calculatedValue(
   all: DatabaseData[],
 ) {
   if (property.type === "UNIQUE_ID") return row.id.slice(-6).toUpperCase();
-  if (property.type === "CREATED_TIME")
-    return new Date(row.createdAt).toLocaleString();
-  if (property.type === "UPDATED_TIME")
-    return new Date(row.updatedAt).toLocaleString();
+  if (property.type === "CREATED_TIME") return new Date(row.createdAt).toLocaleString();
+  if (property.type === "UPDATED_TIME") return new Date(row.updatedAt).toLocaleString();
   if (property.type === "RELATION") {
-    const database = all.find(
-      (item) => item.id === objectOptions(property).databaseId,
-    );
+    const database = all.find((item) => item.id === objectOptions(property).databaseId);
     const ids = stringArray(row.values[property.id]);
     return ids
       .map((id) =>
@@ -231,14 +227,10 @@ function calculatedValue(
             String(config.targetPropertyId)
           ],
       )
-      .filter(
-        (value): value is NonNullable<typeof value> => value !== undefined,
-      );
+      .filter((value): value is NonNullable<typeof value> => value !== undefined);
     if (config.operation === "COUNT") return String(values.length);
     if (config.operation === "SUM")
-      return String(
-        values.reduce((sum: number, value) => sum + (Number(value) || 0), 0),
-      );
+      return String(values.reduce((sum: number, value) => sum + (Number(value) || 0), 0));
     return values.map(text).join(", ");
   }
   if (property.type === "FORMULA") {
@@ -250,9 +242,7 @@ function calculatedValue(
       evaluateFormula(
         expression,
         (name) =>
-          row.values[
-            database?.properties.find((item) => item.name === name)?.id || ""
-          ],
+          row.values[database?.properties.find((item) => item.name === name)?.id || ""],
       ) || "公式錯誤"
     );
   }
@@ -269,17 +259,11 @@ function matchesFilter(
     return (
       filter.filters.length === 0 ||
       (filter.logic === "AND"
-        ? filter.filters.every((child) =>
-            matchesFilter(row, child, database, all),
-          )
-        : filter.filters.some((child) =>
-            matchesFilter(row, child, database, all),
-          ))
+        ? filter.filters.every((child) => matchesFilter(row, child, database, all))
+        : filter.filters.some((child) => matchesFilter(row, child, database, all)))
     );
   if (!filter.propertyId || !filter.operator) return true;
-  const property = database.properties.find(
-    (item) => item.id === filter.propertyId,
-  );
+  const property = database.properties.find((item) => item.id === filter.propertyId);
   const raw = property ? calculatedValue(row, property, all) : "";
   const value = raw.toLowerCase();
   const expected = (filter.value || "").toLowerCase();
@@ -333,9 +317,7 @@ function FilterBuilder({
           </select>
           <button
             type="button"
-            onClick={() =>
-              onChange({ ...node, filters: [...node.filters, {}] })
-            }
+            onClick={() => onChange({ ...node, filters: [...node.filters, {}] })}
           >
             ＋ 條件
           </button>
@@ -372,9 +354,7 @@ function FilterBuilder({
             onRemove={() =>
               onChange({
                 ...node,
-                filters: node.filters.filter(
-                  (_, itemIndex) => itemIndex !== index,
-                ),
+                filters: node.filters.filter((_, itemIndex) => itemIndex !== index),
               })
             }
           />
@@ -462,18 +442,13 @@ export function DatabaseTable({
   );
   const [controls, setControls] = useState(false);
   const [notice, setNotice] = useState("");
-  const [pendingAction, setPendingAction] =
-    useState<PendingDatabaseAction | null>(null);
-  const [creationDialog, setCreationDialog] = useState<CreationDialog | null>(
-    null,
-  );
-  const [automationDraft, setAutomationDraft] =
-    useState<AutomationDraft | null>(null);
+  const [pendingAction, setPendingAction] = useState<PendingDatabaseAction | null>(null);
+  const [creationDialog, setCreationDialog] = useState<CreationDialog | null>(null);
+  const [automationDraft, setAutomationDraft] = useState<AutomationDraft | null>(null);
   const [formValues, setFormValues] = useState<Record<string, unknown>>({});
   const [showColumnComposer, setShowColumnComposer] = useState(false);
   const [propertyName, setPropertyName] = useState("");
-  const [propertyType, setPropertyType] =
-    useState<DatabasePropertyType>("TEXT");
+  const [propertyType, setPropertyType] = useState<DatabasePropertyType>("TEXT");
   const [propertyOptions, setPropertyOptions] = useState("");
   const [propertyDescription, setPropertyDescription] = useState("");
   const [propertyPlaceholder, setPropertyPlaceholder] = useState("");
@@ -489,9 +464,7 @@ export function DatabaseTable({
   const [rollupRelationId, setRollupRelationId] = useState("");
   const [rollupTargetPropertyId, setRollupTargetPropertyId] = useState("");
   const [rollupOperation, setRollupOperation] = useState("SHOW_ORIGINAL");
-  const [draggedPropertyId, setDraggedPropertyId] = useState<string | null>(
-    null,
-  );
+  const [draggedPropertyId, setDraggedPropertyId] = useState<string | null>(null);
   const [draggedRowId, setDraggedRowId] = useState<string | null>(null);
   const [showRowTrash, setShowRowTrash] = useState(false);
   const [trashedRows, setTrashedRows] = useState<
@@ -639,9 +612,7 @@ export function DatabaseTable({
       const name = database.properties[0];
       const result = (await save(`/api/databases/${database.id}/rows`, {
         values: {
-          ...(name && !Object.keys(values).length
-            ? { [name.id]: "未命名紀錄" }
-            : {}),
+          ...(name && !Object.keys(values).length ? { [name.id]: "未命名紀錄" } : {}),
           ...values,
         },
       })) as DatabaseRow & { createdRows?: DatabaseRow[] };
@@ -660,17 +631,12 @@ export function DatabaseTable({
   }
   function exportCsv() {
     const source = rows.map((row) =>
-      database.properties.map((property) =>
-        calculatedValue(row, property, allDatabases),
-      ),
+      database.properties.map((property) => calculatedValue(row, property, allDatabases)),
     );
     const blob = new Blob(
       [
         "\ufeff" +
-          toCsv([
-            [...database.properties.map((property) => property.name)],
-            ...source,
-          ]),
+          toCsv([[...database.properties.map((property) => property.name)], ...source]),
       ],
       { type: "text/csv;charset=utf-8" },
     );
@@ -683,10 +649,9 @@ export function DatabaseTable({
     setNotice(`已匯出 ${source.length} 列 CSV`);
   }
   async function refreshImportedRows() {
-    const response = await fetch(
-      `/api/databases/${database.id}/rows?take=100`,
-      { cache: "no-store" },
-    );
+    const response = await fetch(`/api/databases/${database.id}/rows?take=100`, {
+      cache: "no-store",
+    });
     if (!response.ok) return;
     const result = (await response.json()) as {
       rows: DatabaseRow[];
@@ -726,8 +691,7 @@ export function DatabaseTable({
       createdRows?: number;
       error?: string;
     };
-    if (!response.ok || !result.id)
-      return setNotice(result.error || "無法重新嘗試匯入");
+    if (!response.ok || !result.id) return setNotice(result.error || "無法重新嘗試匯入");
     const pendingJob = {
       id: result.id,
       status: result.status || "PENDING",
@@ -767,9 +731,7 @@ export function DatabaseTable({
               };
               setImportJob(nextJob);
               if (job.status === "RUNNING" || job.status === "PENDING")
-                return setNotice(
-                  `匯入中：${nextJob.processedRows}/${nextJob.totalRows}`,
-                );
+                return setNotice(`匯入中：${nextJob.processedRows}/${nextJob.totalRows}`);
               window.clearInterval(poll);
               if (job.status === "COMPLETED") {
                 void refreshImportedRows();
@@ -777,9 +739,7 @@ export function DatabaseTable({
                   `已匯入 ${nextJob.totalRows} 列（含自動化共 ${nextJob.createdRows} 列）。`,
                 );
               }
-              setNotice(
-                job.errorRows?.[0]?.message || "CSV 匯入失敗，可下載錯誤報表。",
-              );
+              setNotice(job.errorRows?.[0]?.message || "CSV 匯入失敗，可下載錯誤報表。");
             },
           ),
       1_000,
@@ -792,9 +752,7 @@ export function DatabaseTable({
       if (!header?.length) throw new Error("CSV 沒有標題列");
       const properties = header.map(
         (name) =>
-          database.properties.find(
-            (property) => property.name === name.trim(),
-          ) || null,
+          database.properties.find((property) => property.name === name.trim()) || null,
       );
       if (properties.some((property) => !property))
         throw new Error("CSV 含有不存在的欄位名稱");
@@ -820,21 +778,17 @@ export function DatabaseTable({
         return row;
       });
       if (!importedRows.length) throw new Error("CSV 沒有可匯入的資料列");
-      const response = await fetch(
-        `/api/databases/${database.id}/rows/import`,
-        {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ rows: importedRows }),
-        },
-      );
+      const response = await fetch(`/api/databases/${database.id}/rows/import`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rows: importedRows }),
+      });
       const result = (await response.json()) as {
         error?: string;
         id?: string;
         totalRows?: number;
       };
-      if (!response.ok || !result.id)
-        throw new Error(result.error || "資料不正確");
+      if (!response.ok || !result.id) throw new Error(result.error || "資料不正確");
       const pendingJob = {
         id: result.id,
         status: "PENDING",
@@ -886,8 +840,7 @@ export function DatabaseTable({
                   );
                 }
                 setNotice(
-                  job.errorRows?.[0]?.message ||
-                    "CSV 匯入失敗，可下載錯誤報表。",
+                  job.errorRows?.[0]?.message || "CSV 匯入失敗，可下載錯誤報表。",
                 );
               },
             ),
@@ -901,10 +854,9 @@ export function DatabaseTable({
   }
   async function saveRow(row: DatabaseRow, values: Record<string, unknown>) {
     try {
-      const result = (await patch(
-        `/api/databases/${database.id}/rows/${row.id}`,
-        { values },
-      )) as DatabaseRow & { createdRows?: DatabaseRow[] };
+      const result = (await patch(`/api/databases/${database.id}/rows/${row.id}`, {
+        values,
+      })) as DatabaseRow & { createdRows?: DatabaseRow[] };
       onChange({
         ...database,
         rows: [
@@ -962,10 +914,9 @@ export function DatabaseTable({
     const next = !showPropertyTrash;
     setShowPropertyTrash(next);
     if (!next) return;
-    const response = await fetch(
-      `/api/databases/${database.id}/properties/recycle`,
-      { cache: "no-store" },
-    );
+    const response = await fetch(`/api/databases/${database.id}/properties/recycle`, {
+      cache: "no-store",
+    });
     if (!response.ok) return setNotice("無法讀取欄位回收桶");
     setTrashedProperties(await response.json());
   }
@@ -984,9 +935,7 @@ export function DatabaseTable({
       await remove(`/api/databases/${database.id}/properties/${property.id}`);
       onChange({
         ...database,
-        properties: database.properties.filter(
-          (item) => item.id !== property.id,
-        ),
+        properties: database.properties.filter((item) => item.id !== property.id),
       });
       setNotice("已將欄位移到回收桶");
     } catch {
@@ -1026,18 +975,15 @@ export function DatabaseTable({
     const [moved] = next.splice(from, 1);
     next.splice(to, 0, moved);
     try {
-      const response = await fetch(
-        `/api/databases/${database.id}/${kind}/order`,
-        {
-          method: "PATCH",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            kind === "properties"
-              ? { propertyIds: next.map((item) => item.id) }
-              : { rowIds: next.map((item) => item.id) },
-          ),
-        },
-      );
+      const response = await fetch(`/api/databases/${database.id}/${kind}/order`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          kind === "properties"
+            ? { propertyIds: next.map((item) => item.id) }
+            : { rowIds: next.map((item) => item.id) },
+        ),
+      });
       if (!response.ok) throw new Error();
       if (kind === "properties")
         onChange({
@@ -1074,14 +1020,10 @@ export function DatabaseTable({
   }
   async function removeAutomation(automation: DatabaseAutomation) {
     try {
-      await remove(
-        `/api/databases/${database.id}/automations/${automation.id}`,
-      );
+      await remove(`/api/databases/${database.id}/automations/${automation.id}`);
       onChange({
         ...database,
-        automations: database.automations.filter(
-          (item) => item.id !== automation.id,
-        ),
+        automations: database.automations.filter((item) => item.id !== automation.id),
       });
       setNotice("已刪除自動化");
     } catch {
@@ -1144,18 +1086,14 @@ export function DatabaseTable({
           ? { currency: numberCurrency.toUpperCase() }
           : {}),
       };
-    if (propertyType === "DATE")
-      options = { ...base, includeTime: dateIncludeTime };
-    if (propertyType === "PERSON")
-      options = { ...base, multiple: personMultiple };
+    if (propertyType === "DATE") options = { ...base, includeTime: dateIncludeTime };
+    if (propertyType === "PERSON") options = { ...base, multiple: personMultiple };
     if (propertyType === "FILES")
       options = { ...base, maxFiles: Number(fileLimit || 10) };
     if (propertyType === "CHECKBOX")
       options = {
         ...base,
-        ...(propertyPlaceholder.trim()
-          ? { label: propertyPlaceholder.trim() }
-          : {}),
+        ...(propertyPlaceholder.trim() ? { label: propertyPlaceholder.trim() } : {}),
       };
     if (propertyType === "FORMULA") options = { expression: propertyOptions };
     if (propertyType === "RELATION") {
@@ -1217,15 +1155,14 @@ export function DatabaseTable({
   async function saveView() {
     if (!activeView) return;
     try {
-      const view = await patch(
-        `/api/databases/${database.id}/views/${activeView.id}`,
-        { filter, sort: { ...sort, sorts }, config: viewConfig },
-      );
+      const view = await patch(`/api/databases/${database.id}/views/${activeView.id}`, {
+        filter,
+        sort: { ...sort, sorts },
+        config: viewConfig,
+      });
       onChange({
         ...database,
-        views: database.views.map((item) =>
-          item.id === view.id ? view : item,
-        ),
+        views: database.views.map((item) => (item.id === view.id ? view : item)),
       });
       setNotice("檢視已儲存");
     } catch {
@@ -1242,18 +1179,11 @@ export function DatabaseTable({
       database.properties
         .filter(
           (property) =>
-            ![
-              "FORMULA",
-              "ROLLUP",
-              "UNIQUE_ID",
-              "CREATED_TIME",
-              "UPDATED_TIME",
-            ].includes(property.type),
+            !["FORMULA", "ROLLUP", "UNIQUE_ID", "CREATED_TIME", "UPDATED_TIME"].includes(
+              property.type,
+            ),
         )
-        .map((property) => [
-          property.id,
-          values[`property-${property.id}`] || "",
-        ]),
+        .map((property) => [property.id, values[`property-${property.id}`] || ""]),
     );
     try {
       const template = await save(`/api/databases/${database.id}/templates`, {
@@ -1322,10 +1252,7 @@ export function DatabaseTable({
             const value = values[`property-${property.id}`];
             if (!value) return [];
             return [
-              [
-                property.id,
-                property.type === "CHECKBOX" ? value === "true" : value,
-              ],
+              [property.id, property.type === "CHECKBOX" ? value === "true" : value],
             ];
           }),
       );
@@ -1341,15 +1268,12 @@ export function DatabaseTable({
       };
     }
     try {
-      const automation = await save(
-        `/api/databases/${database.id}/automations`,
-        {
-          name: automationDraft.name,
-          trigger: automationDraft.trigger,
-          action: automationDraft.action,
-          config,
-        },
-      );
+      const automation = await save(`/api/databases/${database.id}/automations`, {
+        name: automationDraft.name,
+        trigger: automationDraft.trigger,
+        action: automationDraft.action,
+        config,
+      });
       onChange({
         ...database,
         automations: [automation, ...database.automations],
@@ -1369,13 +1293,9 @@ export function DatabaseTable({
       if (editable) void saveRow(row, { ...row.values, [property.id]: next });
     };
     if (
-      [
-        "FORMULA",
-        "ROLLUP",
-        "UNIQUE_ID",
-        "CREATED_TIME",
-        "UPDATED_TIME",
-      ].includes(property.type)
+      ["FORMULA", "ROLLUP", "UNIQUE_ID", "CREATED_TIME", "UPDATED_TIME"].includes(
+        property.type,
+      )
     )
       return (
         <span className="db-derived">
@@ -1486,13 +1406,9 @@ export function DatabaseTable({
         className="db-cell-input"
         disabled={!editable}
         type={type}
-        maxLength={
-          typeof config.maxLength === "number" ? config.maxLength : undefined
-        }
+        maxLength={typeof config.maxLength === "number" ? config.maxLength : undefined}
         placeholder={
-          typeof config.placeholder === "string"
-            ? config.placeholder
-            : undefined
+          typeof config.placeholder === "string" ? config.placeholder : undefined
         }
         step={
           property.type === "NUMBER"
@@ -1511,16 +1427,13 @@ export function DatabaseTable({
     );
   }
   const grouping =
-    database.properties.find(
-      (property) => property.id === viewConfig.groupPropertyId,
-    ) ||
+    database.properties.find((property) => property.id === viewConfig.groupPropertyId) ||
     database.properties.find(
       (property) => property.type === "STATUS" || property.type === "SELECT",
     );
   const date =
-    database.properties.find(
-      (property) => property.id === viewConfig.datePropertyId,
-    ) || database.properties.find((property) => property.type === "DATE");
+    database.properties.find((property) => property.id === viewConfig.datePropertyId) ||
+    database.properties.find((property) => property.type === "DATE");
   const content =
     activeView?.layout === "FORM" ? (
       <form
@@ -1607,10 +1520,7 @@ export function DatabaseTable({
             <header>
               {status}
               <span>
-                {
-                  rows.filter((row) => text(row.values[grouping.id]) === status)
-                    .length
-                }
+                {rows.filter((row) => text(row.values[grouping.id]) === status).length}
               </span>
             </header>
             {rows
@@ -1618,8 +1528,7 @@ export function DatabaseTable({
               .map((row) => (
                 <article key={row.id}>
                   <strong>
-                    {text(row.values[database.properties[0]?.id || ""]) ||
-                      "未命名"}
+                    {text(row.values[database.properties[0]?.id || ""]) || "未命名"}
                   </strong>
                   <small>
                     {database.properties
@@ -1709,11 +1618,7 @@ export function DatabaseTable({
                   onDragOver={(event) => editable && event.preventDefault()}
                   onDrop={() => {
                     if (draggedPropertyId)
-                      void reorder(
-                        "properties",
-                        draggedPropertyId,
-                        property.id,
-                      );
+                      void reorder("properties", draggedPropertyId, property.id);
                     setDraggedPropertyId(null);
                   }}
                 >
@@ -1732,9 +1637,7 @@ export function DatabaseTable({
                   {editable && (
                     <button
                       className="db-delete-small"
-                      onClick={() =>
-                        setPendingAction({ kind: "property", property })
-                      }
+                      onClick={() => setPendingAction({ kind: "property", property })}
                       title={`刪除 ${property.name}`}
                     >
                       ×
@@ -1797,13 +1700,9 @@ export function DatabaseTable({
     );
   const writableAutomationProperties = database.properties.filter(
     (property) =>
-      ![
-        "FORMULA",
-        "ROLLUP",
-        "UNIQUE_ID",
-        "CREATED_TIME",
-        "UPDATED_TIME",
-      ].includes(property.type),
+      !["FORMULA", "ROLLUP", "UNIQUE_ID", "CREATED_TIME", "UPDATED_TIME"].includes(
+        property.type,
+      ),
   );
   const creationDialogConfig: CreationDialogConfig | null = (() => {
     if (creationDialog === "view")
@@ -2014,9 +1913,7 @@ export function DatabaseTable({
           onBlur={(event) =>
             patch(`/api/databases/${database.id}`, {
               name: event.currentTarget.value,
-            }).then(() =>
-              onChange({ ...database, name: event.currentTarget.value }),
-            )
+            }).then(() => onChange({ ...database, name: event.currentTarget.value }))
           }
         />
       </div>
@@ -2025,24 +1922,15 @@ export function DatabaseTable({
           {database.views.map((view) => (
             <button
               key={view.id}
-              className={
-                view.id === activeView?.id ? "view-tab active" : "view-tab"
-              }
+              className={view.id === activeView?.id ? "view-tab active" : "view-tab"}
               onClick={() => setActiveId(view.id)}
             >
-              {view.layout === "BOARD"
-                ? "▤"
-                : view.layout === "CALENDAR"
-                  ? "◷"
-                  : "▦"}{" "}
+              {view.layout === "BOARD" ? "▤" : view.layout === "CALENDAR" ? "◷" : "▦"}{" "}
               {view.name}
             </button>
           ))}
           {editable && (
-            <button
-              className="add-view"
-              onClick={() => setCreationDialog("view")}
-            >
+            <button className="add-view" onClick={() => setCreationDialog("view")}>
               ＋ 新增檢視
             </button>
           )}
@@ -2051,18 +1939,14 @@ export function DatabaseTable({
           <button onClick={() => setControls(!controls)}>篩選與排序</button>
           {editable && (
             <>
-              <button onClick={() => setShowColumnComposer(true)}>
-                ＋ 新增欄位
-              </button>
+              <button onClick={() => setShowColumnComposer(true)}>＋ 新增欄位</button>
               <button
                 className="button-secondary"
                 onClick={() => void togglePropertyTrash()}
               >
                 ♻ 欄位回收桶
               </button>
-              <button onClick={() => setCreationDialog("template")}>
-                模板
-              </button>
+              <button onClick={() => setCreationDialog("template")}>模板</button>
               <button onClick={() => setCreationDialog("automation-basics")}>
                 自動化
               </button>
@@ -2070,8 +1954,7 @@ export function DatabaseTable({
               <button
                 disabled={!activeView}
                 onClick={() =>
-                  activeView &&
-                  setPendingAction({ kind: "view", view: activeView })
+                  activeView && setPendingAction({ kind: "view", view: activeView })
                 }
               >
                 刪除檢視
@@ -2142,18 +2025,14 @@ export function DatabaseTable({
                 maxLength={300}
               />
             </label>
-            {["SELECT", "MULTI_SELECT", "STATUS", "FORMULA"].includes(
-              propertyType,
-            ) && (
+            {["SELECT", "MULTI_SELECT", "STATUS", "FORMULA"].includes(propertyType) && (
               <label>
                 {propertyType === "FORMULA" ? "公式" : "選項"}
                 <input
                   value={propertyOptions}
                   onChange={(event) => setPropertyOptions(event.target.value)}
                   placeholder={
-                    propertyType === "FORMULA"
-                      ? "例如 {數量} * {單價}"
-                      : "以逗號分隔"
+                    propertyType === "FORMULA" ? "例如 {數量} * {單價}" : "以逗號分隔"
                   }
                 />
               </label>
@@ -2163,9 +2042,7 @@ export function DatabaseTable({
                 <input
                   type="checkbox"
                   checked={allowCustomChoice}
-                  onChange={(event) =>
-                    setAllowCustomChoice(event.target.checked)
-                  }
+                  onChange={(event) => setAllowCustomChoice(event.target.checked)}
                 />
                 允許匯入自訂選項
               </label>
@@ -2176,9 +2053,7 @@ export function DatabaseTable({
                   提示文字
                   <input
                     value={propertyPlaceholder}
-                    onChange={(event) =>
-                      setPropertyPlaceholder(event.target.value)
-                    }
+                    onChange={(event) => setPropertyPlaceholder(event.target.value)}
                     placeholder="輸入時顯示的提示"
                     maxLength={120}
                   />
@@ -2190,9 +2065,7 @@ export function DatabaseTable({
                     min="1"
                     max="10000"
                     value={propertyMaxLength}
-                    onChange={(event) =>
-                      setPropertyMaxLength(event.target.value)
-                    }
+                    onChange={(event) => setPropertyMaxLength(event.target.value)}
                     placeholder="預設 10000"
                   />
                 </label>
@@ -2273,9 +2146,7 @@ export function DatabaseTable({
                 核取標籤
                 <input
                   value={propertyPlaceholder}
-                  onChange={(event) =>
-                    setPropertyPlaceholder(event.target.value)
-                  }
+                  onChange={(event) => setPropertyPlaceholder(event.target.value)}
                   placeholder="例如：已驗證"
                   maxLength={120}
                 />
@@ -2326,9 +2197,7 @@ export function DatabaseTable({
                   彙總欄位
                   <select
                     value={rollupTargetPropertyId}
-                    onChange={(event) =>
-                      setRollupTargetPropertyId(event.target.value)
-                    }
+                    onChange={(event) => setRollupTargetPropertyId(event.target.value)}
                     required
                   >
                     <option value="">選擇欄位</option>
@@ -2390,9 +2259,7 @@ export function DatabaseTable({
               {editable && (
                 <button
                   className="template-delete"
-                  onClick={() =>
-                    setPendingAction({ kind: "template", template })
-                  }
+                  onClick={() => setPendingAction({ kind: "template", template })}
                   title={`刪除 ${template.name}`}
                 >
                   ×
@@ -2457,15 +2324,12 @@ export function DatabaseTable({
                   值
                   <input
                     type={
-                      (
-                        ["on_or_after", "on_or_before"] as Filter["operator"][]
-                      ).includes(filter.operator)
+                      (["on_or_after", "on_or_before"] as Filter["operator"][]).includes(
+                        filter.operator,
+                      )
                         ? "date"
                         : (
-                              [
-                                "greater_than",
-                                "less_than",
-                              ] as Filter["operator"][]
+                              ["greater_than", "less_than"] as Filter["operator"][]
                             ).includes(filter.operator)
                           ? "number"
                           : "text"
@@ -2611,8 +2475,7 @@ export function DatabaseTable({
                         valueIndex === index
                           ? {
                               ...value,
-                              direction: event.target
-                                .value as Sort["direction"],
+                              direction: event.target.value as Sort["direction"],
                             }
                           : value,
                       ),
@@ -2636,9 +2499,7 @@ export function DatabaseTable({
             ))}
             <button
               type="button"
-              onClick={() =>
-                setSorts((current) => [...current, { direction: "asc" }])
-              }
+              onClick={() => setSorts((current) => [...current, { direction: "asc" }])}
             >
               ＋ 次要排序
             </button>
@@ -2684,8 +2545,8 @@ export function DatabaseTable({
       {importJob && (
         <div className="db-import-status">
           <span>
-            匯入狀態：{importJob.status}（{importJob.processedRows}/
-            {importJob.totalRows}）
+            匯入狀態：{importJob.status}（{importJob.processedRows}/{importJob.totalRows}
+            ）
           </span>
           {importJob.status === "FAILED" && (
             <>
@@ -2732,18 +2593,12 @@ export function DatabaseTable({
               <article key={row.id}>
                 <span>
                   <strong>
-                    {text(row.values[database.properties[0]?.id || ""]) ||
-                      "未命名紀錄"}
+                    {text(row.values[database.properties[0]?.id || ""]) || "未命名紀錄"}
                   </strong>
-                  <small>
-                    刪除於 {new Date(row.deletedAt).toLocaleString("zh-TW")}
-                  </small>
+                  <small>刪除於 {new Date(row.deletedAt).toLocaleString("zh-TW")}</small>
                 </span>
                 {editable && (
-                  <button
-                    className="collab-primary"
-                    onClick={() => void restoreRow(row)}
-                  >
+                  <button className="collab-primary" onClick={() => void restoreRow(row)}>
                     還原
                   </button>
                 )}
@@ -2763,8 +2618,7 @@ export function DatabaseTable({
                 <span>
                   <strong>{property.name}</strong>
                   <small>
-                    刪除於{" "}
-                    {new Date(property.deletedAt).toLocaleString("zh-TW")}
+                    刪除於 {new Date(property.deletedAt).toLocaleString("zh-TW")}
                   </small>
                 </span>
                 {editable && (
@@ -2791,9 +2645,7 @@ export function DatabaseTable({
               {editable && (
                 <button
                   className="template-delete"
-                  onClick={() =>
-                    setPendingAction({ kind: "automation", automation })
-                  }
+                  onClick={() => setPendingAction({ kind: "automation", automation })}
                   title={`刪除 ${automation.name}`}
                 >
                   ×

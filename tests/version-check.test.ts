@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { comparisonFromBehind, isValidBranch, isValidCommit, isValidRepository, shortCommit } from "@/lib/version-check";
+import {
+  comparisonFromBehind,
+  isValidBranch,
+  isValidCommit,
+  isValidRepository,
+  shortCommit,
+} from "@/lib/version-check";
 
 describe("version comparison validation", () => {
   it("accepts only safe repository, branch, and commit identifiers", () => {

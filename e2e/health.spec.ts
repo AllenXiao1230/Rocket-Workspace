@@ -6,18 +6,29 @@ test("health endpoint reports every required service readiness", async ({ reques
   const body = await response.json();
   expect(body).toMatchObject({
     status: "ok",
-    checks: { database: "ok", objectStorage: "ok", redis: "ok", collaboration: "ok", scheduler: "ok" },
+    checks: {
+      database: "ok",
+      objectStorage: "ok",
+      redis: "ok",
+      collaboration: "ok",
+      scheduler: "ok",
+    },
   });
   expect(body.checks.migration).toMatch(/^\d{14}_.+/);
 });
 
-test("liveness endpoint stays independent of readiness dependencies", async ({ request }) => {
+test("liveness endpoint stays independent of readiness dependencies", async ({
+  request,
+}) => {
   const response = await request.get("/api/health/live");
   await expect(response).toBeOK();
   await expect(response.json()).resolves.toEqual({ status: "ok" });
 });
 
-test("login screen is usable and protected attachment API rejects anonymous requests", async ({ page, request }) => {
+test("login screen is usable and protected attachment API rejects anonymous requests", async ({
+  page,
+  request,
+}) => {
   await page.goto("/login");
   await expect(page.getByRole("heading", { name: "進入任務控制台" })).toBeVisible();
   await expect(page.getByLabel("電子郵件")).toBeEditable();

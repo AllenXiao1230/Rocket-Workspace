@@ -1,16 +1,53 @@
 import { createHash, randomBytes } from "node:crypto";
 
-type CalendarTask = { id: string; title: string; status: string; startDate: Date | null; dueDate: Date | null; updatedAt: Date };
-type CalendarTestRecord = { id: string; title: string; outcome: string; testDate: Date | null; notes: string | null; updatedAt: Date };
+type CalendarTask = {
+  id: string;
+  title: string;
+  status: string;
+  startDate: Date | null;
+  dueDate: Date | null;
+  updatedAt: Date;
+};
+type CalendarTestRecord = {
+  id: string;
+  title: string;
+  outcome: string;
+  testDate: Date | null;
+  notes: string | null;
+  updatedAt: Date;
+};
 
-export function createCalendarFeedToken() { return randomBytes(32).toString("base64url"); }
-export function hashCalendarFeedToken(token: string) { return createHash("sha256").update(token).digest("hex"); }
+export function createCalendarFeedToken() {
+  return randomBytes(32).toString("base64url");
+}
+export function hashCalendarFeedToken(token: string) {
+  return createHash("sha256").update(token).digest("hex");
+}
 
-function escapeIcs(value: string) { return value.replace(/\\/g, "\\\\").replace(/;/g, "\\;").replace(/,/g, "\\,").replace(/\r?\n/g, "\\n"); }
-function utcStamp(date: Date) { return date.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, ""); }
-function dayStamp(date: Date) { return date.toISOString().slice(0, 10).replace(/-/g, ""); }
-function addDay(date: Date) { const copy = new Date(date); copy.setUTCDate(copy.getUTCDate() + 1); return copy; }
-function foldIcsLine(line: string) { return line.length <= 75 ? line : `${line.slice(0, 75)}\r\n ${line.slice(75)}`; }
+function escapeIcs(value: string) {
+  return value
+    .replace(/\\/g, "\\\\")
+    .replace(/;/g, "\\;")
+    .replace(/,/g, "\\,")
+    .replace(/\r?\n/g, "\\n");
+}
+function utcStamp(date: Date) {
+  return date
+    .toISOString()
+    .replace(/[-:]/g, "")
+    .replace(/\.\d{3}/, "");
+}
+function dayStamp(date: Date) {
+  return date.toISOString().slice(0, 10).replace(/-/g, "");
+}
+function addDay(date: Date) {
+  const copy = new Date(date);
+  copy.setUTCDate(copy.getUTCDate() + 1);
+  return copy;
+}
+function foldIcsLine(line: string) {
+  return line.length <= 75 ? line : `${line.slice(0, 75)}\r\n ${line.slice(75)}`;
+}
 
 function taskEvent(task: CalendarTask, domain: string) {
   const date = task.startDate || task.dueDate;
@@ -47,9 +84,26 @@ function testEvent(record: CalendarTestRecord, domain: string) {
 }
 
 /** Standards-compatible, read-only iCalendar feed for external subscriptions. */
-export function buildProjectCalendarIcs(input: { projectName: string; projectId: string; tasks: CalendarTask[]; testRecords: CalendarTestRecord[] }) {
+export function buildProjectCalendarIcs(input: {
+  projectName: string;
+  projectId: string;
+  tasks: CalendarTask[];
+  testRecords: CalendarTestRecord[];
+}) {
   const domain = `rocket-workspace-${input.projectId}`;
-  const events = [...input.tasks.map((task) => taskEvent(task, domain)), ...input.testRecords.map((record) => testEvent(record, domain))].filter((event): event is string[] => Boolean(event));
-  const lines = ["BEGIN:VCALENDAR", "VERSION:2.0", "PRODID:-//Rocket Workspace//Calendar Feed//ZH-TW", "CALSCALE:GREGORIAN", "METHOD:PUBLISH", `X-WR-CALNAME:${escapeIcs(input.projectName)}`, ...events.flat(), "END:VCALENDAR"];
+  const events = [
+    ...input.tasks.map((task) => taskEvent(task, domain)),
+    ...input.testRecords.map((record) => testEvent(record, domain)),
+  ].filter((event): event is string[] => Boolean(event));
+  const lines = [
+    "BEGIN:VCALENDAR",
+    "VERSION:2.0",
+    "PRODID:-//Rocket Workspace//Calendar Feed//ZH-TW",
+    "CALSCALE:GREGORIAN",
+    "METHOD:PUBLISH",
+    `X-WR-CALNAME:${escapeIcs(input.projectName)}`,
+    ...events.flat(),
+    "END:VCALENDAR",
+  ];
   return `${lines.map(foldIcsLine).join("\r\n")}\r\n`;
 }

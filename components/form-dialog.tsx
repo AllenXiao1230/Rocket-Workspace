@@ -20,9 +20,7 @@ type FormDialogProps = {
   fields: FormDialogField[];
   initialValues?: Partial<Record<string, string>>;
   onCancel: () => void;
-  onSubmit: (
-    values: Record<string, string>,
-  ) => boolean | void | Promise<boolean | void>;
+  onSubmit: (values: Record<string, string>) => boolean | void | Promise<boolean | void>;
 };
 
 export function FormDialog({
@@ -57,11 +55,7 @@ export function FormDialog({
   }
 
   return (
-    <div
-      className="app-dialog-backdrop"
-      role="presentation"
-      onMouseDown={onCancel}
-    >
+    <div className="app-dialog-backdrop" role="presentation" onMouseDown={onCancel}>
       <form
         className="app-dialog"
         role="dialog"

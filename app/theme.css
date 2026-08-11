@@ -33,22 +33,120 @@ html[data-theme="dark"] {
 }
 
 /* Shell, navigation and shared controls. */
-.sidebar { background: var(--theme-sidebar) !important; color: var(--theme-on-sidebar) !important; }
-.project-card { background: linear-gradient(140deg, var(--theme-sidebar-raised), var(--theme-sidebar)) !important; }
-.sidebar :is(.brand-lockup .brand, .create-document, .workspace-settings-link) { color: var(--theme-on-sidebar) !important; }
-.sidebar :is(.brand-subtitle, .side-heading, .sidebar-footer, .tree button, .tree-database) { color: var(--theme-sidebar-muted) !important; }
-.sidebar :is(.tree button:hover, .tree-database:hover, .create-document:hover, .workspace-settings-link:hover) { background: color-mix(in srgb, var(--theme-primary) 14%, transparent) !important; color: var(--theme-on-sidebar) !important; }
-.sidebar .database-nav button.active { background: color-mix(in srgb, var(--theme-primary) 20%, transparent) !important; color: var(--theme-on-sidebar) !important; }
+.sidebar {
+  background: var(--theme-sidebar) !important;
+  color: var(--theme-on-sidebar) !important;
+}
+.project-card {
+  background: linear-gradient(
+    140deg,
+    var(--theme-sidebar-raised),
+    var(--theme-sidebar)
+  ) !important;
+}
+.sidebar :is(.brand-lockup .brand, .create-document, .workspace-settings-link) {
+  color: var(--theme-on-sidebar) !important;
+}
+.sidebar
+  :is(.brand-subtitle, .side-heading, .sidebar-footer, .tree button, .tree-database) {
+  color: var(--theme-sidebar-muted) !important;
+}
+.sidebar
+  :is(
+    .tree button:hover,
+    .tree-database:hover,
+    .create-document:hover,
+    .workspace-settings-link:hover
+  ) {
+  background: color-mix(in srgb, var(--theme-primary) 14%, transparent) !important;
+  color: var(--theme-on-sidebar) !important;
+}
+.sidebar .database-nav button.active {
+  background: color-mix(in srgb, var(--theme-primary) 20%, transparent) !important;
+  color: var(--theme-on-sidebar) !important;
+}
 
 /* Every visible frame shares the theme-derived line token.  Intentional
  * semantic states below (primary and danger) override this baseline. */
-.app * { border-color: var(--line) !important; }
+.app * {
+  border-color: var(--line) !important;
+}
 
-.app :is(input:not([type="color"]), select, textarea) { background: var(--theme-input) !important; border-color: var(--line) !important; color: var(--ink) !important; }
-.app :is(input:not([type="color"]), select, textarea):is(:hover, :focus) { background: var(--theme-input-hover) !important; border-color: var(--accent-border) !important; }
-.app :is(.topbar, .rightbar, .mission-panel, .module-panel, .signal-panel, .my-work-panel, .settings-card, .settings-members, .team-card, .module-table, .task-table, .database-table-wrap, .gantt-scroll, .records, .collab-panel, .app-dialog, .template-picker, .tree-context-menu, .editor-context-menu, .slash-menu, .table-toolbar, .markdown-source) { background: var(--paper) !important; border-color: var(--line) !important; color: var(--ink); }
-.app :is(.database-controls, .database-column-composer, .member-create-card, .module-recycle, .comment-reply, .ai-messages article, .my-work-summary span, .db-board section, .task-header, .module-table header, .database-table th, .gantt-head, .gantt-days span.weekend, .gantt-track i.weekend) { background: var(--surface-soft) !important; border-color: var(--line) !important; color: var(--ink); }
-.app :is(.db-board article, .db-calendar article, .db-gallery article, .database-table, .template-picker-grid button, .task-kanban section > button, .record-attachments, .document-attachments, .module-details) { background: var(--paper) !important; border-color: var(--line) !important; color: var(--ink); }
+.app :is(input:not([type="color"]), select, textarea) {
+  background: var(--theme-input) !important;
+  border-color: var(--line) !important;
+  color: var(--ink) !important;
+}
+.app :is(input:not([type="color"]), select, textarea):is(:hover, :focus) {
+  background: var(--theme-input-hover) !important;
+  border-color: var(--accent-border) !important;
+}
+.app
+  :is(
+    .topbar,
+    .rightbar,
+    .mission-panel,
+    .module-panel,
+    .signal-panel,
+    .my-work-panel,
+    .settings-card,
+    .settings-members,
+    .team-card,
+    .module-table,
+    .task-table,
+    .database-table-wrap,
+    .gantt-scroll,
+    .records,
+    .collab-panel,
+    .app-dialog,
+    .template-picker,
+    .tree-context-menu,
+    .editor-context-menu,
+    .slash-menu,
+    .table-toolbar,
+    .markdown-source
+  ) {
+  background: var(--paper) !important;
+  border-color: var(--line) !important;
+  color: var(--ink);
+}
+.app
+  :is(
+    .database-controls,
+    .database-column-composer,
+    .member-create-card,
+    .module-recycle,
+    .comment-reply,
+    .ai-messages article,
+    .my-work-summary span,
+    .db-board section,
+    .task-header,
+    .module-table header,
+    .database-table th,
+    .gantt-head,
+    .gantt-days span.weekend,
+    .gantt-track i.weekend
+  ) {
+  background: var(--surface-soft) !important;
+  border-color: var(--line) !important;
+  color: var(--ink);
+}
+.app
+  :is(
+    .db-board article,
+    .db-calendar article,
+    .db-gallery article,
+    .database-table,
+    .template-picker-grid button,
+    .task-kanban section > button,
+    .record-attachments,
+    .document-attachments,
+    .module-details
+  ) {
+  background: var(--paper) !important;
+  border-color: var(--line) !important;
+  color: var(--ink);
+}
 
 /* Accent-bearing components, including project modules, databases and editor UI. */
 .app .button-secondary {
@@ -74,14 +172,162 @@ html[data-theme="dark"] {
   border-color: var(--accent-border) !important;
   color: var(--accent-ink) !important;
 }
-.app :is(.database-column-composer button, .template-row button, .document-collab > div:first-child button, .revision-list button, .theme-options button, .accent-presets button, .slash-menu button, .table-toolbar button, .gantt-controls button, .emoji-picker header button, .emoji-group button, .comment-actions button, .comment-reply button, .document-workflow > div:first-child button, .workflow-properties button, .workflow-actions button, .module-detail-actions button, .module-actions > button, .module-actions > span > button, .module-details > header button, .db-filter-builder button, .db-import-export button, .record-attachments button, .document-attachments button) { background: var(--panel) !important; border-color: var(--line) !important; color: var(--ink) !important; }
-.app :is(.database-column-composer button:hover, .template-row button:hover, .document-collab > div:first-child button:hover, .document-collab > div:first-child button.active, .revision-list button:hover, .theme-options button:hover, .accent-presets button:hover, .accent-presets button.active, .slash-menu button:hover, .table-toolbar button:hover, .gantt-controls button:hover, .emoji-picker header button:hover, .emoji-group button:hover, .emoji-group button.active, .comment-actions button:hover, .comment-reply button:hover, .document-workflow > div:first-child button.active, .workflow-properties button:hover, .workflow-actions button:hover, .module-detail-actions button:hover, .module-actions > button:hover, .module-actions > span > button:hover, .module-details > header button:hover, .db-filter-builder button:hover, .db-import-export button:hover, .record-attachments button:hover, .document-attachments button:hover) { background: var(--accent-soft) !important; border-color: var(--accent-border) !important; color: var(--accent-ink) !important; }
-.app :is(.primary, .collab-primary, .database-actions .db-primary, .database-column-composer .db-primary, .member-add button, .member-create-form button, .team-add button, .task-create button, .team-account-form button, .module-create button, .gantt-create button, .emoji-custom button, .module-edit-toggle.active, .dialog-primary) { background: var(--theme-primary-deep) !important; color: var(--theme-highlight) !important; border-color: var(--theme-primary-deep) !important; }
-.app :is(.role-badge, .overview-badge, .record-state, .member-list small, .comment-meta span, .database-icon, .document-icon, .profile-avatar-preview, .member-avatar) { background: var(--accent-soft) !important; color: var(--accent-ink) !important; border-color: var(--accent-border) !important; }
-.app :is(.editor-toolbar button:hover, .editor-toolbar button.active, .editor-toolbar a:hover, .view-tab.active, .database-actions button:hover, .database-bottom-add:hover, .module:hover, .template-row button:hover, .table-toolbar button:hover, .slash-menu button:hover, .tree-context-menu button:hover, .editor-context-menu button:hover, .gantt-controls button:hover) { background: var(--accent-soft) !important; color: var(--accent-ink) !important; border-color: var(--accent-border) !important; }
-.app :is(.gantt-bar, .gantt-bar.in_progress) { background: var(--theme-primary) !important; color: var(--theme-primary-deep) !important; }
-.app :is(.gantt-bar.blocked, .readiness-foot i, .workflow-state.changes_requested) { background: var(--theme-warning) !important; }
-.app :is(.editor-status::before, .live-dot, .safe-indicator, .sync-state i, .db-checkbox, .gantt-work-calendar input) { accent-color: var(--theme-primary); background-color: var(--theme-primary); }
+.app
+  :is(
+    .database-column-composer button,
+    .template-row button,
+    .document-collab > div:first-child button,
+    .revision-list button,
+    .theme-options button,
+    .accent-presets button,
+    .slash-menu button,
+    .table-toolbar button,
+    .gantt-controls button,
+    .emoji-picker header button,
+    .emoji-group button,
+    .comment-actions button,
+    .comment-reply button,
+    .document-workflow > div:first-child button,
+    .workflow-properties button,
+    .workflow-actions button,
+    .module-detail-actions button,
+    .module-actions > button,
+    .module-actions > span > button,
+    .module-details > header button,
+    .db-filter-builder button,
+    .db-import-export button,
+    .record-attachments button,
+    .document-attachments button
+  ) {
+  background: var(--panel) !important;
+  border-color: var(--line) !important;
+  color: var(--ink) !important;
+}
+.app
+  :is(
+    .database-column-composer button:hover,
+    .template-row button:hover,
+    .document-collab > div:first-child button:hover,
+    .document-collab > div:first-child button.active,
+    .revision-list button:hover,
+    .theme-options button:hover,
+    .accent-presets button:hover,
+    .accent-presets button.active,
+    .slash-menu button:hover,
+    .table-toolbar button:hover,
+    .gantt-controls button:hover,
+    .emoji-picker header button:hover,
+    .emoji-group button:hover,
+    .emoji-group button.active,
+    .comment-actions button:hover,
+    .comment-reply button:hover,
+    .document-workflow > div:first-child button.active,
+    .workflow-properties button:hover,
+    .workflow-actions button:hover,
+    .module-detail-actions button:hover,
+    .module-actions > button:hover,
+    .module-actions > span > button:hover,
+    .module-details > header button:hover,
+    .db-filter-builder button:hover,
+    .db-import-export button:hover,
+    .record-attachments button:hover,
+    .document-attachments button:hover
+  ) {
+  background: var(--accent-soft) !important;
+  border-color: var(--accent-border) !important;
+  color: var(--accent-ink) !important;
+}
+.app
+  :is(
+    .primary,
+    .collab-primary,
+    .database-actions .db-primary,
+    .database-column-composer .db-primary,
+    .member-add button,
+    .member-create-form button,
+    .team-add button,
+    .task-create button,
+    .team-account-form button,
+    .module-create button,
+    .gantt-create button,
+    .emoji-custom button,
+    .module-edit-toggle.active,
+    .dialog-primary
+  ) {
+  background: var(--theme-primary-deep) !important;
+  color: var(--theme-highlight) !important;
+  border-color: var(--theme-primary-deep) !important;
+}
+.app
+  :is(
+    .role-badge,
+    .overview-badge,
+    .record-state,
+    .member-list small,
+    .comment-meta span,
+    .database-icon,
+    .document-icon,
+    .profile-avatar-preview,
+    .member-avatar
+  ) {
+  background: var(--accent-soft) !important;
+  color: var(--accent-ink) !important;
+  border-color: var(--accent-border) !important;
+}
+.app
+  :is(
+    .editor-toolbar button:hover,
+    .editor-toolbar button.active,
+    .editor-toolbar a:hover,
+    .view-tab.active,
+    .database-actions button:hover,
+    .database-bottom-add:hover,
+    .module:hover,
+    .template-row button:hover,
+    .table-toolbar button:hover,
+    .slash-menu button:hover,
+    .tree-context-menu button:hover,
+    .editor-context-menu button:hover,
+    .gantt-controls button:hover
+  ) {
+  background: var(--accent-soft) !important;
+  color: var(--accent-ink) !important;
+  border-color: var(--accent-border) !important;
+}
+.app :is(.gantt-bar, .gantt-bar.in_progress) {
+  background: var(--theme-primary) !important;
+  color: var(--theme-primary-deep) !important;
+}
+.app :is(.gantt-bar.blocked, .readiness-foot i, .workflow-state.changes_requested) {
+  background: var(--theme-warning) !important;
+}
+.app
+  :is(
+    .editor-status::before,
+    .live-dot,
+    .safe-indicator,
+    .sync-state i,
+    .db-checkbox,
+    .gantt-work-calendar input
+  ) {
+  accent-color: var(--theme-primary);
+  background-color: var(--theme-primary);
+}
 
 /* States deliberately retain semantic danger meaning, but still use a shared token. */
-.app :is(.dialog-danger, .module-delete, .database-danger, .editor-danger, .team-remove, .attachment-remove, .comment-actions button.danger, .tree-context-menu button.danger, .editor-context-menu button.danger) { background: var(--theme-danger-soft) !important; color: var(--theme-danger) !important; border-color: var(--theme-danger-border) !important; }
+.app
+  :is(
+    .dialog-danger,
+    .module-delete,
+    .database-danger,
+    .editor-danger,
+    .team-remove,
+    .attachment-remove,
+    .comment-actions button.danger,
+    .tree-context-menu button.danger,
+    .editor-context-menu button.danger
+  ) {
+  background: var(--theme-danger-soft) !important;
+  color: var(--theme-danger) !important;
+  border-color: var(--theme-danger-border) !important;
+}

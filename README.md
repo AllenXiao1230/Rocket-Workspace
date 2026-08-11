@@ -88,12 +88,12 @@ backups：資料庫、Markdown 與附件備份
 
 備份服務啟動後會先執行一次，之後依 `BACKUP_INTERVAL_HOURS`（預設 24）排程，並依 `BACKUP_RETENTION_DAYS`（預設 14）保留。檔案存於：
 
-| 路徑 | 內容 |
-| --- | --- |
-| `backups/database/` | PostgreSQL `.dump` |
-| `backups/workspace/` | Markdown 與本機工作區封存 |
-| `backups/attachments/` | MinIO 附件封存 |
-| `backups/status/` | manifest、SHA-256 與最後成功狀態 |
+| 路徑                   | 內容                             |
+| ---------------------- | -------------------------------- |
+| `backups/database/`    | PostgreSQL `.dump`               |
+| `backups/workspace/`   | Markdown 與本機工作區封存        |
+| `backups/attachments/` | MinIO 附件封存                   |
+| `backups/status/`      | manifest、SHA-256 與最後成功狀態 |
 
 驗證最近一次備份時，先從 `backups/status/last-success.txt` 取得 ID，再執行：
 
@@ -129,15 +129,15 @@ docker compose exec backup restore-drill <backup-id>
 
 接著到 GitHub 儲存庫的 **Settings → Secrets and variables → Actions** 設定：
 
-| 類型 | 名稱 | 值 |
-| --- | --- | --- |
-| Variable | `AUTO_DEPLOY_ENABLED` | `true` 才開啟自動部署；刪除或改為其他值即可停用。 |
-| Secret | `DEPLOY_HOST` | 伺服器 DNS 名稱或 IP。 |
-| Secret | `DEPLOY_PORT` | SSH 連接埠；留白時預設 `22`。 |
-| Secret | `DEPLOY_USER` | 專用 deploy 使用者。 |
-| Secret | `DEPLOY_SSH_KEY` | GitHub Actions 用來登入伺服器的私鑰內容。 |
-| Secret | `DEPLOY_KNOWN_HOSTS` | 該伺服器的 `ssh-keyscan -H <host>` 輸出，防止 SSH 中間人攻擊。 |
-| Secret | `DEPLOY_PATH` | 伺服器上的專案絕對路徑，例如 `/srv/rocket-workspace`。 |
+| 類型     | 名稱                  | 值                                                             |
+| -------- | --------------------- | -------------------------------------------------------------- |
+| Variable | `AUTO_DEPLOY_ENABLED` | `true` 才開啟自動部署；刪除或改為其他值即可停用。              |
+| Secret   | `DEPLOY_HOST`         | 伺服器 DNS 名稱或 IP。                                         |
+| Secret   | `DEPLOY_PORT`         | SSH 連接埠；留白時預設 `22`。                                  |
+| Secret   | `DEPLOY_USER`         | 專用 deploy 使用者。                                           |
+| Secret   | `DEPLOY_SSH_KEY`      | GitHub Actions 用來登入伺服器的私鑰內容。                      |
+| Secret   | `DEPLOY_KNOWN_HOSTS`  | 該伺服器的 `ssh-keyscan -H <host>` 輸出，防止 SSH 中間人攻擊。 |
+| Secret   | `DEPLOY_PATH`         | 伺服器上的專案絕對路徑，例如 `/srv/rocket-workspace`。         |
 
 每次 `main` 有程式碼推送時，工作流程會先確認設定完整，再於伺服器執行 `git pull --ff-only`、重建 `app`／`collab`／`scheduler`／`backup`，並輪詢 `/api/health`。純 Markdown 與 `docs/` 推送會略過部署。伺服器有未提交的**已追蹤**修改、分支不在 `main`，或 health check 失敗時會中止並在 GitHub Actions 顯示失敗，避免覆蓋本機設定或使用者資料。
 
@@ -198,6 +198,7 @@ pnpm collab
 修改後最低限度執行：
 
 ```bash
+pnpm format:check
 pnpm typecheck
 pnpm test
 pnpm build

@@ -17,7 +17,9 @@ describe("可自訂外觀的主題權杖", () => {
 
     for (const [file, label, className] of secondaryButtons) {
       const source = read(file);
-      expect(source).toMatch(new RegExp(`<button[^>]*className=[^>]*${className}[^>]*>[^<]*${label}`));
+      expect(source).toMatch(
+        new RegExp(`<button[^>]*className=[^>]*${className}[^>]*>[^<]*${label}`),
+      );
     }
 
     const theme = read("app/theme.css");
@@ -30,7 +32,12 @@ describe("可自訂外觀的主題權杖", () => {
   it("將所有可自訂的色彩種子輸出成語意 CSS 變數", () => {
     const source = read("components/theme-toggle.tsx");
 
-    for (const token of ["--theme-primary", "--theme-primary-deep", "--theme-highlight", "--theme-warning"]) {
+    for (const token of [
+      "--theme-primary",
+      "--theme-primary-deep",
+      "--theme-highlight",
+      "--theme-warning",
+    ]) {
       expect(source).toContain(`setProperty(\"${token}\"`);
     }
   });
@@ -39,16 +46,22 @@ describe("可自訂外觀的主題權杖", () => {
     const css = read("app/globals.css");
     const root = css.match(/:root\s*\{([^}]*)\}/)?.[1] || "";
 
-    expect(root).toContain("--app-background:#25272b");
-    expect(root).toMatch(/--theme-primary:#8dbd45/);
-    expect(root).toMatch(/--theme-primary-deep:#315a3e/);
-    expect(root).toMatch(/--line:color-mix\(in srgb,var\(--theme-primary\)/);
-    expect(root).not.toMatch(/--theme-(?:primary|primary-deep|highlight|warning):var\(--theme-/);
-    expect(read("app/theme.css")).toContain(".app * { border-color: var(--line) !important; }");
+    expect(root).toMatch(/--app-background:\s*#25272b/);
+    expect(root).toMatch(/--theme-primary:\s*#8dbd45/);
+    expect(root).toMatch(/--theme-primary-deep:\s*#315a3e/);
+    expect(root).toMatch(/--line:\s*color-mix\(in srgb,\s*var\(--theme-primary\)/);
+    expect(root).not.toMatch(
+      /--theme-(?:primary|primary-deep|highlight|warning):var\(--theme-/,
+    );
+    expect(read("app/theme.css")).toMatch(
+      /\.app\s+\*\s*\{\s*border-color:\s*var\(--line\)\s*!important/,
+    );
   });
 
   it("不讓既有預設配色直接寫死在元件樣式中", () => {
-    const css = ["app/globals.css", "app/table-editor.css", "app/theme.css"].map(read).join("\n");
+    const css = ["app/globals.css", "app/table-editor.css", "app/theme.css"]
+      .map(read)
+      .join("\n");
     const stylesWithoutDefaults = css.replace(/:root\s*\{[^}]*\}/, "");
 
     for (const color of ["#8dbd45", "#315a3e", "#d7f45a", "#f19156"]) {

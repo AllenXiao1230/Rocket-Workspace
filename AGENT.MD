@@ -10,17 +10,17 @@
 
 ## 技術地圖
 
-| 範圍 | 位置 |
-| --- | --- |
-| Web 介面與 API | `app/`、`components/` |
-| 權限、認證、資料服務 | `lib/` |
-| 資料模型與 migrations | `prisma/schema.prisma`、`prisma/migrations/` |
-| Yjs 協作服務 | `apps/collab-server/` |
-| Markdown 同步 | `scripts/sync-markdown.ts`、`lib/document-storage.ts` |
-| 任務排程 | `scripts/task-scheduler.ts`、`lib/task-automation.ts` |
-| GitHub 自動部署 | `.github/workflows/deploy.yml`、`scripts/deploy-from-github.sh` |
-| Compose 與備份 | `docker-compose.yml`、`backup/` |
-| 功能稽核與 Markdown 限制 | `docs/` |
+| 範圍                     | 位置                                                            |
+| ------------------------ | --------------------------------------------------------------- |
+| Web 介面與 API           | `app/`、`components/`                                           |
+| 權限、認證、資料服務     | `lib/`                                                          |
+| 資料模型與 migrations    | `prisma/schema.prisma`、`prisma/migrations/`                    |
+| Yjs 協作服務             | `apps/collab-server/`                                           |
+| Markdown 同步            | `scripts/sync-markdown.ts`、`lib/document-storage.ts`           |
+| 任務排程                 | `scripts/task-scheduler.ts`、`lib/task-automation.ts`           |
+| GitHub 自動部署          | `.github/workflows/deploy.yml`、`scripts/deploy-from-github.sh` |
+| Compose 與備份           | `docker-compose.yml`、`backup/`                                 |
+| 功能稽核與 Markdown 限制 | `docs/`                                                         |
 
 ## 不可違反的資料規則
 

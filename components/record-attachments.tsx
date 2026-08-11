@@ -1,5 +1,79 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 type Attachment = { id: string; filename: string; size: number; createdAt: string };
-export function RecordAttachments({ projectId, module, recordId, canWrite }: { projectId: string; module: "bom" | "tests"; recordId: string; canWrite: boolean }) { const [items, setItems] = useState<Attachment[]>([]); const [notice, setNotice] = useState(""); const input = useRef<HTMLInputElement>(null); const path = `/api/projects/${projectId}/records/${module}/${recordId}/attachments`; const load = () => void fetch(path).then((response) => response.ok ? response.json() : []).then(setItems); useEffect(load, [path]); async function upload(file: File) { const data = new FormData(); data.set("file", file); const response = await fetch(path, { method: "POST", body: data }); const result = await response.json(); if (!response.ok) return setNotice(result.error || "上傳失敗"); setItems((current) => [result, ...current]); } async function remove(id: string) { const response = await fetch(`${path}?attachmentId=${encodeURIComponent(id)}`, { method: "DELETE" }); if (response.ok) setItems((current) => current.filter((item) => item.id !== id)); }
-return <section className="record-attachments"><header><strong>附件</strong>{canWrite && <><button type="button" onClick={() => input.current?.click()}>上傳檔案</button><input ref={input} hidden type="file" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (file) void upload(file); }} /></>}</header>{items.length ? items.map((item) => <p key={item.id}><a href={`${path}?attachmentId=${encodeURIComponent(item.id)}`}>📎 {item.filename}</a><span>{Math.ceil(item.size / 1024)} KB</span>{canWrite && <button type="button" onClick={() => void remove(item.id)}>×</button>}</p>) : <p className="hint">尚無附件。</p>}{notice && <p className="error">{notice}</p>}</section>; }
+export function RecordAttachments({
+  projectId,
+  module,
+  recordId,
+  canWrite,
+}: {
+  projectId: string;
+  module: "bom" | "tests";
+  recordId: string;
+  canWrite: boolean;
+}) {
+  const [items, setItems] = useState<Attachment[]>([]);
+  const [notice, setNotice] = useState("");
+  const input = useRef<HTMLInputElement>(null);
+  const path = `/api/projects/${projectId}/records/${module}/${recordId}/attachments`;
+  const load = () =>
+    void fetch(path)
+      .then((response) => (response.ok ? response.json() : []))
+      .then(setItems);
+  useEffect(load, [path]);
+  async function upload(file: File) {
+    const data = new FormData();
+    data.set("file", file);
+    const response = await fetch(path, { method: "POST", body: data });
+    const result = await response.json();
+    if (!response.ok) return setNotice(result.error || "上傳失敗");
+    setItems((current) => [result, ...current]);
+  }
+  async function remove(id: string) {
+    const response = await fetch(`${path}?attachmentId=${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    });
+    if (response.ok) setItems((current) => current.filter((item) => item.id !== id));
+  }
+  return (
+    <section className="record-attachments">
+      <header>
+        <strong>附件</strong>
+        {canWrite && (
+          <>
+            <button type="button" onClick={() => input.current?.click()}>
+              上傳檔案
+            </button>
+            <input
+              ref={input}
+              hidden
+              type="file"
+              onChange={(event) => {
+                const file = event.currentTarget.files?.[0];
+                if (file) void upload(file);
+              }}
+            />
+          </>
+        )}
+      </header>
+      {items.length ? (
+        items.map((item) => (
+          <p key={item.id}>
+            <a href={`${path}?attachmentId=${encodeURIComponent(item.id)}`}>
+              📎 {item.filename}
+            </a>
+            <span>{Math.ceil(item.size / 1024)} KB</span>
+            {canWrite && (
+              <button type="button" onClick={() => void remove(item.id)}>
+                ×
+              </button>
+            )}
+          </p>
+        ))
+      ) : (
+        <p className="hint">尚無附件。</p>
+      )}
+      {notice && <p className="error">{notice}</p>}
+    </section>
+  );
+}

@@ -6,6 +6,75 @@ import { prisma } from "@/lib/prisma";
 import { canWrite, databaseAccess } from "@/lib/permissions";
 import { validateAutomationConfig } from "@/lib/database-automations";
 
-const schema = z.object({ name: z.string().trim().min(1).max(100), trigger: z.nativeEnum(AutomationTrigger), action: z.nativeEnum(AutomationAction), config: z.record(z.string(), z.unknown()).default({}), enabled: z.boolean().optional() });
-export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) { const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); const { id } = await params; const access = await databaseAccess(session.user.id, id); if (!access) return NextResponse.json({ error: "Not found" }, { status: 404 }); return NextResponse.json(await prisma.databaseAutomation.findMany({ where: { databaseId: id }, orderBy: { createdAt: "desc" } })); }
-export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) { const session = await auth(); if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); const { id } = await params; const access = await databaseAccess(session.user.id, id); if (!access || !canWrite(access.membership.role)) return NextResponse.json({ error: "Forbidden" }, { status: 403 }); const parsed = schema.safeParse(await request.json()); if (!parsed.success) return NextResponse.json({ error: "Invalid automation" }, { status: 400 }); const properties = await prisma.databaseProperty.findMany({ where: { databaseId: id, deletedAt: null }, select: { id: true, name: true, type: true, options: true } }); const issues = validateAutomationConfig(parsed.data.action, parsed.data.config, properties); if (issues.length) return NextResponse.json({ error: issues[0].message, issues }, { status: 400 }); const automation = await prisma.databaseAutomation.create({ data: { databaseId: id, ...parsed.data, config: parsed.data.config as Prisma.InputJsonValue } }); await prisma.auditEvent.create({ data: { userId: session.user.id, action: "database_automation.created", entity: "database_automation", entityId: automation.id, workspaceId: access.database.project.workspaceId, projectId: access.database.projectId, metadata: { databaseId: id, name: automation.name, trigger: automation.trigger, automationAction: automation.action, enabled: automation.enabled } } }); return NextResponse.json(automation, { status: 201 }); }
+const schema = z.object({
+  name: z.string().trim().min(1).max(100),
+  trigger: z.nativeEnum(AutomationTrigger),
+  action: z.nativeEnum(AutomationAction),
+  config: z.record(z.string(), z.unknown()).default({}),
+  enabled: z.boolean().optional(),
+});
+export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
+  const session = await auth();
+  if (!session?.user?.id)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { id } = await params;
+  const access = await databaseAccess(session.user.id, id);
+  if (!access) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  return NextResponse.json(
+    await prisma.databaseAutomation.findMany({
+      where: { databaseId: id },
+      orderBy: { createdAt: "desc" },
+    }),
+  );
+}
+export async function POST(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const session = await auth();
+  if (!session?.user?.id)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const { id } = await params;
+  const access = await databaseAccess(session.user.id, id);
+  if (!access || !canWrite(access.membership.role))
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  const parsed = schema.safeParse(await request.json());
+  if (!parsed.success)
+    return NextResponse.json({ error: "Invalid automation" }, { status: 400 });
+  const properties = await prisma.databaseProperty.findMany({
+    where: { databaseId: id, deletedAt: null },
+    select: { id: true, name: true, type: true, options: true },
+  });
+  const issues = validateAutomationConfig(
+    parsed.data.action,
+    parsed.data.config,
+    properties,
+  );
+  if (issues.length)
+    return NextResponse.json({ error: issues[0].message, issues }, { status: 400 });
+  const automation = await prisma.databaseAutomation.create({
+    data: {
+      databaseId: id,
+      ...parsed.data,
+      config: parsed.data.config as Prisma.InputJsonValue,
+    },
+  });
+  await prisma.auditEvent.create({
+    data: {
+      userId: session.user.id,
+      action: "database_automation.created",
+      entity: "database_automation",
+      entityId: automation.id,
+      workspaceId: access.database.project.workspaceId,
+      projectId: access.database.projectId,
+      metadata: {
+        databaseId: id,
+        name: automation.name,
+        trigger: automation.trigger,
+        automationAction: automation.action,
+        enabled: automation.enabled,
+      },
+    },
+  });
+  return NextResponse.json(automation, { status: 201 });
+}
