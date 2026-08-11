@@ -15,6 +15,7 @@
 - **文件協作周邊**：留言串、回覆、解析、刪除、版本歷史與還原、MinIO 附件上傳／下載／刪除、站內通知。
 - **日曆同步**：每個專案可在設定中心建立可輪替、可撤銷的標準 iCalendar（`.ics`）訂閱網址；Google Calendar、Apple Calendar、Outlook 等可唯讀同步有日期的任務與測試紀錄，權杖只儲存 SHA-256 雜湊。
 - **設定與維運**：明暗模式、主題配色、專案資訊、工作空間隔離的安全／功能開關與管理者操作紀錄；主機備份排程僅由系統管理員調整，並備份 PostgreSQL、Markdown、MinIO 附件及完整性資訊。
+- **一致的互動操作**：文件與專案模組的新增／移至回收桶操作使用應用程式內對話框；專案模組的移至回收桶可用鍵盤確認或以 Escape 取消，不依賴瀏覽器原生確認視窗。
 - **AI 與外部整合**：可在設定中心設定 OpenAI-compatible API 或 Ollama，於「AI 與整合」頁面對話；GitHub Issue 為唯讀查詢，Webhook 可帶 HMAC SHA-256 簽章送出測試事件。每個工作空間的密鑰以 AES-256-GCM 加密存於 PostgreSQL、永不回顯；外連一律驗證 HTTPS、私有網路位址與實際連線 IP，Ollama 僅允許受信任的內部主機。AI 請求與 Webhook 測試會保留不含提示、回覆或密鑰的稽核事件。
 - **規模與維運可觀測性**：首頁文件樹、資料庫列與專案模組紀錄採 cursor 分頁；資料庫欄位、檢視與模板會在選取資料庫時按需載入。`/api/health` 提供完整 readiness 檢查，`/api/health/live` 提供不依賴外部服務的 liveness 檢查。
 - **部署**：Docker Compose 一鍵啟動 Next.js、PostgreSQL、Redis、MinIO、Yjs 協作、任務 scheduler 與備份服務；資料庫 migration 自動套用。
