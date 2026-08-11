@@ -43,7 +43,7 @@ jobs:
       - run: cp .env.example .env
       - run: docker compose up -d --build app
       - run: |
-          for attempt in $(seq 1 30); do
+          for attempt in $(seq 1 60); do
             if curl --fail --silent http://127.0.0.1:3000/api/health; then exit 0; fi
             sleep 2
           done
