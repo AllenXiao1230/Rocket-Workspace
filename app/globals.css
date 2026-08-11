@@ -1411,6 +1411,15 @@ input:focus {
   align-items: center;
   gap: 4px;
 }
+.database-actions {
+  min-width: 0;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.database-page button {
+  min-width: 24px;
+  min-height: 24px;
+}
 .view-tab,
 .add-view,
 .database-actions button {
@@ -1439,6 +1448,15 @@ input:focus {
   color: #f1ffd6;
   font-weight: 800;
   padding: 8px 12px;
+}
+.database-action-overflow {
+  display: contents;
+}
+.database-action-overflow summary {
+  display: none;
+}
+.database-action-overflow > div {
+  display: contents;
 }
 .database-controls {
   display: flex;
@@ -1654,6 +1672,74 @@ input:focus {
   .editor-toolbar {
     overflow: auto;
     width: 100%;
+  }
+}
+@media (max-width: 850px) {
+  .database-toolbar {
+    display: grid;
+    align-items: stretch;
+  }
+  .view-tabs {
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    padding-bottom: 4px;
+  }
+  .database-actions {
+    justify-content: flex-start;
+    gap: 8px;
+  }
+  .database-actions > button,
+  .database-action-overflow summary {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    white-space: nowrap;
+  }
+  .database-action-overflow {
+    display: block;
+  }
+  .database-action-overflow summary {
+    list-style: none;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: #617168;
+    cursor: pointer;
+    padding: 7px 9px;
+    font-size: 12px;
+  }
+  .database-action-overflow summary::-webkit-details-marker {
+    display: none;
+  }
+  .database-action-overflow[open] {
+    width: 100%;
+  }
+  .database-action-overflow:not([open]) > div {
+    display: none;
+  }
+  .database-action-overflow[open] > div {
+    display: grid;
+    gap: 8px;
+    margin-top: 8px;
+    padding: 8px;
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    background: var(--paper);
+  }
+  .database-action-overflow[open] > div > button {
+    width: 100%;
+    min-height: 44px;
+    padding: 8px 12px;
+    text-align: left;
+    white-space: nowrap;
+  }
+}
+@media (max-width: 700px) {
+  .database-page button {
+    min-width: 44px;
+    min-height: 44px;
   }
 }
 @media (max-width: 700px) {
@@ -2416,8 +2502,10 @@ html[data-theme="dark"] .revision-list article {
     font-size: clamp(25px, 8vw, 31px);
   }
   .theme-toggle {
+    position: absolute;
     right: max(12px, env(safe-area-inset-right));
-    bottom: max(12px, env(safe-area-inset-bottom));
+    top: max(12px, env(safe-area-inset-top));
+    bottom: auto;
   }
 }
 

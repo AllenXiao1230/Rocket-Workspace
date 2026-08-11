@@ -41,12 +41,16 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: cp .env.example .env
-      - run: docker compose up -d --build app
+      - run: docker compose up --detach --build app collab scheduler
       - run: |
-          for attempt in $(seq 1 30); do
-            if curl --fail --silent http://127.0.0.1:3000/api/health; then exit 0; fi
+          deadline=$((SECONDS + 300))
+          while (( SECONDS < deadline )); do
+            if curl --fail --silent http://127.0.0.1:3000/api/health; then
+              exit 0
+            fi
             sleep 2
           done
+          curl --fail --silent --show-error http://127.0.0.1:3000/api/health && exit 0
           docker compose logs --tail=100 app postgres minio
           exit 1
       - run: pnpm test:integration:prepare

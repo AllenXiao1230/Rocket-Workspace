@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { signOut } from "next-auth/react";
 import { CollaborativeEditor } from "@/components/collaborative-editor";
-import type { DatabaseData } from "@/components/database-view";
+import { DatabaseTable, type DatabaseData } from "@/components/database-view";
 import { WorkspaceSearch } from "@/components/workspace-search";
 import { SettingsPanel } from "@/components/settings-panel";
 import { TeamManagement, type TeamMember } from "@/components/team-management";
@@ -602,6 +602,12 @@ export function WorkspaceShell({
     const next = documents.find((document) => !result.removedIds.includes(document.id));
     setActiveId(next?.id || "");
   }
+  async function deleteDatabase(id: string) {
+    const response = await fetch(`/api/databases/${id}`, { method: "DELETE" });
+    if (!response.ok) return notify("無法刪除資料庫", "請確認你的管理權限後再試一次。");
+    setDatabases((current) => current.filter((database) => database.id !== id));
+    setActiveDatabaseId("");
+  }
   async function duplicateDocument(id: string) {
     const response = await fetch(`/api/documents/${id}/duplicate`, { method: "POST" });
     const result = await response.json();
@@ -975,6 +981,21 @@ export function WorkspaceShell({
             initialSelectedId={module === "tasks" ? selectedTaskId : undefined}
             onSelectedIdChange={module === "tasks" ? setSelectedTaskId : undefined}
             onRecordsChange={(next) => handleModuleRecordsChange(module, next)}
+          />
+        ) : activeDatabase ? (
+          <DatabaseTable
+            key={activeDatabase.id}
+            database={activeDatabase}
+            allDatabases={databases}
+            editable={currentUser.role !== "VIEWER"}
+            onChange={(nextDatabase) =>
+              setDatabases((current) =>
+                current.map((database) =>
+                  database.id === nextDatabase.id ? nextDatabase : database,
+                ),
+              )
+            }
+            onDelete={(id) => void deleteDatabase(id)}
           />
         ) : active?.content ? (
           <CollaborativeEditor
