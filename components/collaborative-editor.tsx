@@ -105,7 +105,6 @@ export function CollaborativeEditor({
     null,
   );
   const [reloadMarkdown, setReloadMarkdown] = useState<string | null>(null);
-  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const saveTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const saving = useRef(false);
   const pending = useRef<SaveSnapshot | null>(null);
@@ -984,7 +983,7 @@ export function CollaborativeEditor({
         {editable && (
           <>
             <button onClick={() => onCreateSubpage?.(document.id)}>＋ 子頁面</button>
-            <button className="editor-danger" onClick={() => setDeleteDialogOpen(true)}>
+            <button className="editor-danger" onClick={() => onDelete?.()}>
               刪除頁面
             </button>
           </>
@@ -1366,19 +1365,6 @@ export function CollaborativeEditor({
             setSourceMode(true);
           }}
           onConfirm={applyReloadFromFile}
-        />
-      )}
-      {deleteDialogOpen && (
-        <ConfirmDialog
-          title={`刪除「${document.title}」？`}
-          description="文件會移至回收桶，稍後仍可還原。"
-          confirmLabel="移至回收桶"
-          destructive
-          onCancel={() => setDeleteDialogOpen(false)}
-          onConfirm={() => {
-            setDeleteDialogOpen(false);
-            onDelete?.();
-          }}
         />
       )}
     </article>

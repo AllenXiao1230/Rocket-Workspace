@@ -1970,10 +1970,17 @@ export function DatabaseTable({
         <input
           className="database-title"
           defaultValue={database.name}
-          onBlur={(event) =>
-            patch(`/api/databases/${database.id}`, {
-              name: event.currentTarget.value,
-            }).then(() => onChange({ ...database, name: event.currentTarget.value }))
+          aria-label="資料庫名稱"
+          readOnly={!editable}
+          onBlur={
+            editable
+              ? (event) =>
+                  patch(`/api/databases/${database.id}`, {
+                    name: event.currentTarget.value,
+                  }).then(() =>
+                    onChange({ ...database, name: event.currentTarget.value }),
+                  )
+              : undefined
           }
         />
       </div>
@@ -1997,43 +2004,50 @@ export function DatabaseTable({
         </div>
         <div className="database-actions">
           <button onClick={() => setControls(!controls)}>篩選與排序</button>
-          {database.properties.some((property) => property.type === "FORMULA") && (
-            <button className="button-secondary" onClick={toggleFormulaErrors}>
-              {showFormulaErrors ? "收合公式錯誤" : "公式錯誤紀錄"}
-            </button>
-          )}
+          <details className="database-action-overflow">
+            <summary>更多操作</summary>
+            <div>
+              {database.properties.some((property) => property.type === "FORMULA") && (
+                <button className="button-secondary" onClick={toggleFormulaErrors}>
+                  {showFormulaErrors ? "收合公式錯誤" : "公式錯誤紀錄"}
+                </button>
+              )}
+              {editable && (
+                <>
+                  <button onClick={() => setShowColumnComposer(true)}>＋ 新增欄位</button>
+                  <button
+                    className="button-secondary"
+                    onClick={() => void togglePropertyTrash()}
+                  >
+                    ♻ 欄位回收桶
+                  </button>
+                  <button onClick={() => setCreationDialog("template")}>模板</button>
+                  <button onClick={() => setCreationDialog("automation-basics")}>
+                    自動化
+                  </button>
+                  <button onClick={saveView}>儲存檢視</button>
+                  <button
+                    disabled={!activeView}
+                    onClick={() =>
+                      activeView && setPendingAction({ kind: "view", view: activeView })
+                    }
+                  >
+                    刪除檢視
+                  </button>
+                  <button
+                    className="database-danger"
+                    onClick={() => setPendingAction({ kind: "database" })}
+                  >
+                    刪除資料庫
+                  </button>
+                </>
+              )}
+            </div>
+          </details>
           {editable && (
-            <>
-              <button onClick={() => setShowColumnComposer(true)}>＋ 新增欄位</button>
-              <button
-                className="button-secondary"
-                onClick={() => void togglePropertyTrash()}
-              >
-                ♻ 欄位回收桶
-              </button>
-              <button onClick={() => setCreationDialog("template")}>模板</button>
-              <button onClick={() => setCreationDialog("automation-basics")}>
-                自動化
-              </button>
-              <button onClick={saveView}>儲存檢視</button>
-              <button
-                disabled={!activeView}
-                onClick={() =>
-                  activeView && setPendingAction({ kind: "view", view: activeView })
-                }
-              >
-                刪除檢視
-              </button>
-              <button className="db-primary" onClick={() => void addRow()}>
-                ＋ 新增列
-              </button>
-              <button
-                className="database-danger"
-                onClick={() => setPendingAction({ kind: "database" })}
-              >
-                刪除資料庫
-              </button>
-            </>
+            <button className="db-primary" onClick={() => void addRow()}>
+              ＋ 新增列
+            </button>
           )}
         </div>
       </div>
