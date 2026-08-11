@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { MemberSettings } from "@/components/member-settings";
+import { StatusMessage } from "@/components/status-message";
 import {
   accentPresets,
   applyAppearance,
@@ -429,7 +430,7 @@ export function SettingsPanel({
               移除照片
             </button>
           )}
-          {profileNotice && <span className="collab-notice">{profileNotice}</span>}
+          {profileNotice && <StatusMessage>{profileNotice}</StatusMessage>}
         </form>
       )}
       <form className="settings-grid" onSubmit={save}>
@@ -484,7 +485,7 @@ export function SettingsPanel({
           >
             {scanWorking ? "掃描中…" : "掃描外部文件"}
           </button>
-          {scanNotice && <p className="collab-notice">{scanNotice}</p>}
+          {scanNotice && <StatusMessage>{scanNotice}</StatusMessage>}
         </section>
         <section className="settings-card appearance-settings">
           <h2>外觀與配色</h2>
@@ -818,7 +819,7 @@ export function SettingsPanel({
           ) : (
             <p className="hint">你有檢視權限；請由工作空間管理員修改設定。</p>
           )}
-          {notice && <span className="collab-notice">{notice}</span>}
+          {notice && <StatusMessage>{notice}</StatusMessage>}
         </div>
       </form>
       {settings.canManage && (
@@ -855,7 +856,11 @@ export function SettingsPanel({
               <p className="hint">尚無可顯示的操作紀錄。</p>
             )}
           </div>
-          {auditNotice && <p className="error">{auditNotice}</p>}
+          {auditNotice && (
+            <StatusMessage className="error" tone="alert">
+              {auditNotice}
+            </StatusMessage>
+          )}
         </section>
       )}
       {settings.canManage && (
@@ -915,7 +920,7 @@ export function SettingsPanel({
           <p className="hint">
             安全提醒：網址相當於唯讀存取權杖，只會在建立或輪替當下顯示一次。若外流，請立即輪替。
           </p>
-          {calendarNotice && <p className="collab-notice">{calendarNotice}</p>}
+          {calendarNotice && <StatusMessage>{calendarNotice}</StatusMessage>}
         </section>
       )}
       {settings.canManage && (
@@ -946,7 +951,7 @@ export function SettingsPanel({
           <button className="primary" type="submit">
             建立專案
           </button>
-          {projectNotice && <span className="collab-notice">{projectNotice}</span>}
+          {projectNotice && <StatusMessage>{projectNotice}</StatusMessage>}
         </form>
       )}
       <MemberSettings

@@ -41,7 +41,7 @@ export default async function Home({
     memberships[0];
   if (!membership)
     return (
-      <main className="login">
+      <main id="main-content" className="login" tabIndex={-1}>
         <section className="login-card">
           <p className="brand">Rocket Workspace</p>
           <h1>尚未加入工作空間</h1>
@@ -81,7 +81,7 @@ export default async function Home({
     workspace.projects[0]?.id;
   if (!projectId)
     return (
-      <main className="login">
+      <main id="main-content" className="login" tabIndex={-1}>
         <section className="login-card">
           <p className="brand">Rocket Workspace</p>
           <h1>尚未建立專案</h1>

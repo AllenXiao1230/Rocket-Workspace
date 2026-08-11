@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { StatusMessage } from "@/components/status-message";
 import type { TeamMember } from "@/components/team-management";
 
 const roles = { OWNER: "擁有者", ADMIN: "管理員", EDITOR: "編輯者", VIEWER: "檢視者" };
@@ -209,7 +210,7 @@ export function MemberSettings({
           </article>
         ))}
       </div>
-      {notice && <span className="collab-notice">{notice}</span>}
+      {notice && <StatusMessage>{notice}</StatusMessage>}
       {pendingRemoval && (
         <ConfirmDialog
           title="移除團隊成員？"

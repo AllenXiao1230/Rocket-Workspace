@@ -5,7 +5,10 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { canChangeMembershipRole } from "@/lib/membership-permissions";
 
-export async function GET(_: Request, { params }: { params: Promise<{ id: string }> }) {
+export async function GET(
+  request: Request,
+  { params }: { params: Promise<{ id: string }> },
+) {
   const session = await auth();
   if (!session?.user?.id)
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -14,6 +17,21 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
     where: { userId: session.user.id, workspaceId: id },
   });
   if (!membership) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const searchParams = new URL(request.url).searchParams;
+  const cursor = searchParams.get("cursor") || undefined;
+  const requestedTake = Number.parseInt(searchParams.get("take") || "", 10);
+  const pageSize = Number.isInteger(requestedTake)
+    ? Math.min(Math.max(requestedTake, 1), 100)
+    : 50;
+  const paginated = searchParams.has("take") || Boolean(cursor);
+  if (
+    cursor &&
+    !(await prisma.membership.findFirst({
+      where: { id: cursor, workspaceId: id },
+      select: { id: true },
+    }))
+  )
+    return NextResponse.json({ error: "Invalid member cursor" }, { status: 400 });
   const members = await prisma.membership.findMany({
     where: { workspaceId: id },
     include: {
@@ -21,21 +39,29 @@ export async function GET(_: Request, { params }: { params: Promise<{ id: string
         select: { id: true, email: true, name: true, avatarEmoji: true, avatarKey: true },
       },
     },
-    orderBy: { nickname: "asc" },
+    orderBy: [{ nickname: "asc" }, { id: "asc" }],
+    cursor: cursor ? { id: cursor } : undefined,
+    skip: cursor ? 1 : undefined,
+    take: paginated ? pageSize + 1 : undefined,
   });
+  const hasMore = paginated && members.length > pageSize;
+  const page = hasMore ? members.slice(0, pageSize) : members;
+  const result = page.map(({ user, ...member }) => ({
+    ...member,
+    user: {
+      id: user.id,
+      email: user.email,
+      name: user.name,
+      avatarEmoji: user.avatarEmoji,
+      avatarUrl: user.avatarKey
+        ? `/api/account/avatar?userId=${encodeURIComponent(user.id)}&v=${encodeURIComponent(user.avatarKey.slice(-12))}`
+        : null,
+    },
+  }));
   return NextResponse.json(
-    members.map(({ user, ...member }) => ({
-      ...member,
-      user: {
-        id: user.id,
-        email: user.email,
-        name: user.name,
-        avatarEmoji: user.avatarEmoji,
-        avatarUrl: user.avatarKey
-          ? `/api/account/avatar?userId=${encodeURIComponent(user.id)}&v=${encodeURIComponent(user.avatarKey.slice(-12))}`
-          : null,
-      },
-    })),
+    paginated
+      ? { members: result, nextCursor: hasMore ? page.at(-1)?.id || null : null }
+      : result,
   );
 }
 export async function POST(

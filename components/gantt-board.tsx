@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { calculateCriticalPath } from "@/lib/cpm";
 import { addWorkingDays, nextWorkingDate, workingDaySpan } from "@/lib/work-calendar";
+import { StatusMessage } from "@/components/status-message";
 
 type GanttTask = {
   id: string;
@@ -540,7 +541,7 @@ export function GanttBoard({
           )}
         </div>
       </div>
-      {notice && <span className="collab-notice">{notice}</span>}
+      {notice && <StatusMessage>{notice}</StatusMessage>}
     </section>
   );
 }

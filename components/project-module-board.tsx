@@ -5,6 +5,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { FormDialog } from "@/components/form-dialog";
 import type { TeamMember } from "@/components/team-management";
 import { RecordAttachments } from "@/components/record-attachments";
+import { StatusMessage } from "@/components/status-message";
 
 export type ProjectModule = "tasks" | "issues" | "bom" | "tests";
 type DetailDialog = "worklog" | "test-step" | "test-measurement" | "test-approval";
@@ -649,7 +650,7 @@ export function ProjectModuleBoard({
           )}
         </section>
       )}
-      {notice && <span className="collab-notice">{notice}</span>}
+      {notice && <StatusMessage>{notice}</StatusMessage>}
       {pendingRemoval && (
         <ConfirmDialog
           title="移至回收桶？"
@@ -1085,7 +1086,7 @@ function ModuleRecordDetails({
           canPurge={canPurge}
         />
       )}
-      {notice && <p className="collab-notice">{notice}</p>}
+      {notice && <StatusMessage>{notice}</StatusMessage>}
       {detailDialog && (
         <FormDialog
           title={

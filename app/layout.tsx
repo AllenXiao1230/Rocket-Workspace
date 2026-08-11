@@ -5,7 +5,10 @@ import "./theme.css";
 import { ThemeToggle } from "@/components/theme-toggle";
 
 export const metadata: Metadata = {
-  title: "Rocket Workspace",
+  title: {
+    default: "Rocket Workspace",
+    template: "%s | Rocket Workspace",
+  },
   description: "Self-hosted collaborative project workspace",
   metadataBase: new URL(process.env.NEXTAUTH_URL || "http://localhost:3000"),
   openGraph: {
@@ -33,6 +36,9 @@ export default function RootLayout({
   return (
     <html lang="zh-Hant" suppressHydrationWarning>
       <body>
+        <a className="skip-link" href="#main-content">
+          跳至主要內容
+        </a>
         {children}
         <ThemeToggle />
       </body>

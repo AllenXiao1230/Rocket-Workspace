@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
+import { StatusMessage } from "@/components/status-message";
 
 export type TeamMember = {
   id: string;
@@ -23,14 +24,45 @@ const roleNames = {
   VIEWER: "檢視者",
 };
 const displayName = (member: TeamMember) => member.nickname || member.user.name;
+const pageSize = 50;
+
+type MembersPage = { members: TeamMember[]; nextCursor: string | null };
 
 export function TeamManagement({ workspaceId }: { workspaceId: string }) {
   const [members, setMembers] = useState<TeamMember[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [notice, setNotice] = useState("");
+  const load = useCallback(
+    async (cursor?: string) => {
+      setLoading(true);
+      try {
+        const params = new URLSearchParams({ take: String(pageSize) });
+        if (cursor) params.set("cursor", cursor);
+        const response = await fetch(`/api/workspaces/${workspaceId}/members?${params}`, {
+          cache: "no-store",
+        });
+        const result = (await response.json()) as Partial<MembersPage> & {
+          error?: string;
+        };
+        if (!response.ok || !Array.isArray(result.members))
+          throw new Error(result.error || "無法讀取成員名單");
+        setMembers((current) =>
+          cursor ? [...current, ...result.members!] : result.members!,
+        );
+        setNextCursor(result.nextCursor || null);
+        setNotice("");
+      } catch (error) {
+        setNotice(error instanceof Error ? error.message : "無法讀取成員名單");
+      } finally {
+        setLoading(false);
+      }
+    },
+    [workspaceId],
+  );
   useEffect(() => {
-    void fetch(`/api/workspaces/${workspaceId}/members`)
-      .then((response) => (response.ok ? response.json() : []))
-      .then(setMembers);
-  }, [workspaceId]);
+    void load();
+  }, [load]);
   return (
     <section className="team-page">
       <div className="settings-hero">
@@ -41,7 +73,9 @@ export function TeamManagement({ workspaceId }: { workspaceId: string }) {
       <section className="team-card">
         <div className="team-directory-head">
           <h2>成員名單</h2>
-          <span>{members.length} 位</span>
+          <span>
+            {nextCursor ? `已載入 ${members.length} 位` : `${members.length} 位`}
+          </span>
         </div>
         <div className="team-directory">
           {members.map((member) => (
@@ -51,6 +85,10 @@ export function TeamManagement({ workspaceId }: { workspaceId: string }) {
                   <img
                     src={member.user.avatarUrl}
                     alt={`${displayName(member)} 的頭像`}
+                    width={27}
+                    height={27}
+                    loading="lazy"
+                    decoding="async"
                   />
                 ) : (
                   member.user.avatarEmoji || displayName(member).slice(0, 1).toUpperCase()
@@ -70,7 +108,27 @@ export function TeamManagement({ workspaceId }: { workspaceId: string }) {
             </article>
           ))}
         </div>
-        {!members.length && <p className="hint">尚無成員。</p>}
+        {loading && !members.length && (
+          <StatusMessage className="hint">正在載入成員…</StatusMessage>
+        )}
+        {!loading && !members.length && <p className="hint">尚無成員。</p>}
+        {nextCursor && (
+          <button
+            type="button"
+            className="team-load-more"
+            disabled={loading}
+            aria-busy={loading}
+            onClick={() => void load(nextCursor)}
+          >
+            {loading && <span className="button-spinner" aria-hidden="true" />}
+            <span>載入更多成員</span>
+          </button>
+        )}
+        {notice && (
+          <StatusMessage className="error" tone="alert">
+            {notice}
+          </StatusMessage>
+        )}
       </section>
     </section>
   );

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { StatusMessage } from "@/components/status-message";
 
 type SyncBlock = {
   id: string;
@@ -113,7 +114,7 @@ export function DocumentSyncBlocks({
           </button>
         </div>
       )}
-      {notice && <p className="hint">{notice}</p>}
+      {notice && <StatusMessage className="hint">{notice}</StatusMessage>}
     </section>
   );
 }

@@ -1,11 +1,14 @@
+import type { Metadata } from "next";
 import { rawAuth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { LoginForm } from "@/components/login-form";
 
+export const metadata: Metadata = { title: "登入" };
+
 export default async function LoginPage() {
   if (await rawAuth()) redirect("/");
   return (
-    <main className="login">
+    <main id="main-content" className="login" tabIndex={-1}>
       <section className="login-card">
         <p className="brand">Rocket Workspace · 任務控制台</p>
         <h1>進入任務控制台</h1>

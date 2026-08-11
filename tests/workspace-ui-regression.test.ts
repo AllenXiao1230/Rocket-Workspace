@@ -57,4 +57,34 @@ describe("工作空間設定與導覽介面", () => {
     expect(read("components/collaborative-editor.tsx")).toContain("DocumentSyncBlocks");
     expect(read("components/document-sync-blocks.tsx")).toContain("建立同步區塊");
   });
+
+  it("讓非同步結果以可讀屏通知的共用元件呈現", () => {
+    const source = read("components/status-message.tsx");
+    expect(source).toContain('role={tone === "alert" ? "alert" : "status"}');
+    expect(source).toContain('aria-live={tone === "alert" ? "assertive" : "polite"}');
+    expect(read("components/settings-panel.tsx")).toContain(
+      "<StatusMessage>{notice}</StatusMessage>",
+    );
+  });
+
+  it("讓密碼變更的錯誤可恢復且與確認欄位相關聯", () => {
+    const source = read("components/change-password-form.tsx");
+    expect(source).toContain("try {");
+    expect(source).toContain("finally {");
+    expect(source).toContain('id="password-confirmation-error"');
+    expect(source).toContain("button-spinner");
+  });
+
+  it("使用 cursor 分頁載入大型成員清單", () => {
+    const source = read("components/team-management.tsx");
+    expect(source).toContain("take: String(pageSize)");
+    expect(source).toContain("nextCursor");
+    expect(source).toContain('loading="lazy"');
+    expect(read("app/api/workspaces/[id]/members/route.ts")).toContain("nextCursor");
+  });
+
+  it("提供跳至主要內容連結與可聚焦的主要地標", () => {
+    expect(read("app/layout.tsx")).toContain('href="#main-content"');
+    expect(read("components/workspace-shell.tsx")).toContain('id="main-content"');
+  });
 });

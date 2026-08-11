@@ -481,6 +481,22 @@ export function WorkspaceShell({
     (issue) => issue.status !== "RESOLVED" && issue.status !== "WONT_FIX",
   ).length;
   const activeDatabase = databases.find((database) => database.id === activeDatabaseId);
+  const currentViewTitle = showSettings
+    ? "設定中心"
+    : showAi
+      ? "AI 與整合"
+      : showTeam
+        ? "團隊成員"
+        : showRecycle
+          ? "回收桶"
+          : module
+            ? moduleLabels[module]
+            : activeDatabase
+              ? activeDatabase.name
+              : active?.title || "文件";
+  useEffect(() => {
+    document.title = `${currentViewTitle} | ${projectDisplay.name} | Rocket Workspace`;
+  }, [currentViewTitle, projectDisplay.name]);
   useEffect(() => {
     if (!activeDatabase || activeDatabase.views.length) return;
     let cancelled = false;
@@ -858,26 +874,12 @@ export function WorkspaceShell({
           ObserveOnly · 安全模式
         </div>
       </aside>
-      <main className="main">
+      <main id="main-content" className="main" tabIndex={-1}>
         <header className="topbar">
           <div className="breadcrumbs">
             <span>{workspaceName}</span>
             <b>/</b>
-            <strong>
-              {showSettings
-                ? "設定中心"
-                : showAi
-                  ? "AI 與整合"
-                  : showTeam
-                    ? "團隊成員"
-                    : showRecycle
-                      ? "回收桶"
-                      : module
-                        ? moduleLabels[module]
-                        : activeDatabase
-                          ? activeDatabase.name
-                          : active?.title || "文件"}
-            </strong>
+            <strong>{currentViewTitle}</strong>
           </div>
           <div className="topbar-actions">
             <WorkspaceSearch

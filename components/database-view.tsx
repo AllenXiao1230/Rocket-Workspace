@@ -5,6 +5,7 @@ import { evaluateFormula } from "@/lib/formula";
 import { parseCsv, toCsv } from "@/lib/csv";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { FormDialog, type FormDialogField } from "@/components/form-dialog";
+import { StatusMessage } from "@/components/status-message";
 
 export type DatabasePropertyType =
   | "TEXT"
@@ -2518,7 +2519,7 @@ export function DatabaseTable({
               </select>
             </label>
           )}
-          <span>{notice}</span>
+          {notice && <StatusMessage>{notice}</StatusMessage>}
         </div>
       )}
       {controls && (

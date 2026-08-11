@@ -72,6 +72,22 @@ a {
   outline: 3px solid var(--focus-ring);
   outline-offset: 3px;
 }
+.skip-link {
+  position: fixed;
+  z-index: 1000;
+  top: 16px;
+  left: 16px;
+  border-radius: 8px;
+  background: var(--void);
+  color: var(--acid);
+  padding: 12px 16px;
+  font-weight: 800;
+  transform: translateY(-96px);
+  transition: transform 160ms ease-out;
+}
+.skip-link:focus-visible {
+  transform: translateY(0);
+}
 .login {
   min-height: 100vh;
   display: grid;
@@ -2412,6 +2428,9 @@ html[data-theme="dark"] .revision-list article {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .skip-link {
+    transition: none;
+  }
   .theme-toggle:hover {
     transform: none;
   }
@@ -4046,6 +4065,23 @@ html[data-theme="dark"] .editor-context-menu button.danger:hover {
 .tree-row > .tree-subpage {
   flex: 0 0 25px;
 }
+@media (pointer: coarse) and (min-width: 701px) {
+  .tree-subpage,
+  .tree-menu-trigger {
+    flex-basis: 44px !important;
+    width: 44px !important;
+    height: 44px;
+    opacity: 1;
+  }
+  .tree-row > .tree-collapse {
+    flex-basis: 44px !important;
+    width: 44px !important;
+    height: 44px;
+  }
+  .tree-row > .tree-subpage {
+    flex-basis: 44px;
+  }
+}
 .tree-rail {
   width: 20px;
   font-size: 14px;
@@ -5541,6 +5577,14 @@ html[data-theme="dark"] .version-status.update {
 }
 .member-avatar {
   overflow: hidden;
+}
+.team-load-more {
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 14px;
 }
 .side-heading {
   margin-top: 16px;

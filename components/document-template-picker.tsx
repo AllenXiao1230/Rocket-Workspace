@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
+import { StatusMessage } from "@/components/status-message";
 
 type Template = {
   id: string;
@@ -107,7 +108,11 @@ export function DocumentTemplatePicker({
             </button>
           </form>
         )}
-        {notice && <p className="error">{notice}</p>}
+        {notice && (
+          <StatusMessage className="error" tone="alert">
+            {notice}
+          </StatusMessage>
+        )}
       </section>
     </div>
   );

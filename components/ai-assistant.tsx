@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { StatusMessage } from "@/components/status-message";
 
 type Message = { role: "user" | "assistant"; content: string };
 type Issue = { id: number; number: number; title: string; url: string; state: string };
@@ -130,7 +131,7 @@ export function AiAssistant({ projectId }: { projectId: string }) {
           <button onClick={() => void webhookTest()}>送出測試事件</button>
         </section>
       </div>
-      {notice && <p className="collab-notice">{notice}</p>}
+      {notice && <StatusMessage>{notice}</StatusMessage>}
     </section>
   );
 }

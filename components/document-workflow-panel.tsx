@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
+import { StatusMessage } from "@/components/status-message";
 
 type Backlink = { id: string; title: string; icon: string; updatedAt: string };
 type Workflow = {
@@ -209,7 +210,7 @@ export function DocumentWorkflowPanel({
               </div>
             </>
           )}
-          {notice && <p className="collab-notice">{notice}</p>}
+          {notice && <StatusMessage>{notice}</StatusMessage>}
         </div>
       )}
       {propertyDraft && (

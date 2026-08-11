@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import type { TeamMember } from "@/components/team-management";
+import { StatusMessage } from "@/components/status-message";
 
 export type WorkspaceTask = {
   id: string;
@@ -119,7 +120,7 @@ export function TaskBoard({
           <div className="empty">尚無任務</div>
         )}
       </div>
-      {notice && <span className="collab-notice">{notice}</span>}
+      {notice && <StatusMessage>{notice}</StatusMessage>}
     </section>
   );
 }
