@@ -1,0 +1,33 @@
+# This block is appended to /srv/caddy/Caddyfile, which runs in the Caddy
+# container on the external `proxy` Docker network. It reuses the Cloudflare
+# Origin Certificate mounted at /etc/certs.
+workspace.studioxuan.qzz.io {
+	tls /etc/certs/origin.crt /etc/certs/origin.key
+
+	# WebsocketProvider connects to /collab/document-…; remove the routing
+	# prefix because the collaboration server expects /document-… directly.
+	handle_path /collab/* {
+		reverse_proxy rocket-workspace-collab:1234 {
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up CF-Connecting-IP {remote_host}
+		}
+	}
+
+	# All remaining application and API requests go to Next.js.
+	handle {
+		reverse_proxy rocket-workspace-app:3000 {
+			header_up X-Real-IP {remote_host}
+			header_up X-Forwarded-For {remote_host}
+			header_up CF-Connecting-IP {remote_host}
+		}
+	}
+
+	# Match the existing Immich proxy policy.
+	encode gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+	}
+}

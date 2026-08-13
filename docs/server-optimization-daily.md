@@ -12,6 +12,22 @@
 | systemd journal 容量與保留期限制     | 持續         | 上限 500 MiB、保留 14 天                                |
 | 系統套件檢查與安全常規更新           | 每日 03:30   | `daily-server-maintenance.timer`；必要時於 04:00 重開機 |
 
+## Monit 告警郵件格式
+
+Monit 的 SMTP、寄件者與收件人設定由既有的 `/etc/monit/conf-available/10-gmail` 管理。若要將告警信改為含繁體中文欄位、清楚事件摘要與處理建議的格式，執行：
+
+```bash
+sudo bash scripts/configure-monit-email-format.sh
+```
+
+此腳本只寫入 `/etc/monit/conf-available/15-mail-format`，並建立對應啟用連結；不會讀取或改寫 Gmail 密碼、SMTP、寄件者或收件人。它會先備份舊格式、執行 `monit -t`，驗證通過後才重新啟動 Monit。可先用下列指令查看將套用的內容：
+
+```bash
+bash scripts/configure-monit-email-format.sh --dry-run
+```
+
+`$EVENT` 與 `$DESCRIPTION` 是 Monit 內建產生的事件字串，仍可能是英文；若需要連這兩個動態值都翻成中文，須改用事件處理腳本自行轉譯後寄信。
+
 ## 每日檢查（建議 09:00）
 
 ```bash
@@ -58,6 +74,5 @@ apt list --upgradable
 
 1. 盤點並驗證所有應用程式與資料庫備份。
 2. 為主機建立 DHCP 保留位址後，將 Immich 與 Jellyfin 僅綁定 LAN IP。
-3. 為 Rocket 建立網域與 Caddy HTTPS 路由，再關閉直接對外的 3000 埠。
-4. 將實體記憶體升級至至少 8 GiB，建議 16 GiB。
-5. 決定重新部署 Nextcloud 或暫時移除失效的 Caddy 路由。
+3. 將實體記憶體升級至至少 8 GiB，建議 16 GiB。
+4. 決定重新部署 Nextcloud 或暫時移除失效的 Caddy 路由。

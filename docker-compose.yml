@@ -12,12 +12,18 @@ services:
       BACKUP_MAX_AGE_HOURS: ${BACKUP_MAX_AGE_HOURS:-48}
     command: sh -c "pnpm db:deploy && pnpm db:seed && pnpm documents:sync && pnpm start"
     volumes: ["./workspace-data:/workspace-data", "./backups/status:/backup-status:ro"]
-    ports: ["3000:3000"]
+    # Caddy is the only public entrypoint; keep Next.js reachable from this
+    # host for its reverse proxy while preventing direct Internet access.
+    ports: ["127.0.0.1:3000:3000"]
     depends_on:
       postgres: { condition: service_healthy }
       redis: { condition: service_started }
       minio-init: { condition: service_completed_successfully }
       backup: { condition: service_started }
+    networks:
+      default:
+      proxy:
+        aliases: [rocket-workspace-app]
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:3000/api/health"]
@@ -36,6 +42,10 @@ services:
     volumes: ["collab-data:/collab-data"]
     depends_on:
       redis: { condition: service_started }
+    networks:
+      default:
+      proxy:
+        aliases: [rocket-workspace-collab]
     restart: unless-stopped
     healthcheck:
       test: ["CMD-SHELL", "wget -q -O /dev/null http://localhost:1234/"]
@@ -130,3 +140,7 @@ volumes:
   redis-data:
   minio-data:
   collab-data:
+
+networks:
+  proxy:
+    external: true

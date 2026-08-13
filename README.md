@@ -111,8 +111,18 @@ docker compose exec backup restore-drill <backup-id>
 
 ## 安全與部署注意事項
 
-- 對外部署請以 TLS reverse proxy 代理 `app` 與 `collab`，並將 `NEXTAUTH_URL` 改為公開 HTTPS 網址、`NEXT_PUBLIC_COLLABORATION_URL` 改為對應的 `wss://`。
+- 此專案已提供 [`Caddyfile`](Caddyfile)。將其站台區塊附加到 `/srv/caddy/Caddyfile` 後，它會沿用現有的 Cloudflare Origin Certificate，並透過外部 `proxy` Docker network 代理應用程式。`/collab/*` 會移除 `/collab` 前綴後代理至協作 WebSocket；其他請求則代理至 Next.js。將 `.env` 設為：
+
+  ```dotenv
+  NEXTAUTH_URL=https://workspace.studioxuan.qzz.io
+  NEXT_PUBLIC_COLLABORATION_URL=wss://workspace.studioxuan.qzz.io/collab
+  COLLABORATION_ALLOWED_ORIGINS=https://workspace.studioxuan.qzz.io
+  ```
+
+  Caddy 與 Compose 的 `app`／`collab` 服務必須在同一主機；兩個上游加入內部 Compose network 與 Caddy 的 `proxy` network，並僅將連接埠綁定至主機 loopback，不對公網開放。
+- 使用 Cloudflare 管理 DNS 時，將 `workspace` 的 A／AAAA 記錄指向此主機；若啟用橘色雲代理，Cloudflare 的 SSL/TLS 模式必須設為 **Full (strict)**，不可使用 Flexible，並保持 Network → WebSockets 為 On。此部署使用 Caddy 已掛載的 Cloudflare Origin Certificate，不需要 Caddy DNS 外掛或 API Token；Caddy 容器必須對外開放 80 與 443。
 - 不要將 PostgreSQL、Redis、MinIO 對公網暴露。Compose 預設只把 MinIO 與協作連接埠綁在本機。
+- 主機的 Monit 告警可執行 `sudo bash scripts/configure-monit-email-format.sh` 套用繁體中文、可快速判讀的信件格式；它不會變更 Gmail 的 SMTP、寄件者或收件人設定，且會先驗證語法再重啟 Monit。詳見 [每日伺服器維護](docs/server-optimization-daily.md#monit-告警郵件格式)。
 - **設定中心 → 安全與功能開關** 可關閉協作、附件、Markdown 下載、網頁帳號建立、強制首次改密碼與登入限速；設定依工作空間隔離，帳號同時加入多個空間時採最嚴格的密碼與登入限制。
 - **帳號安全**與 AI／整合設定都預設關閉。設定頁的密鑰欄位只接受新值，既有值不會回傳至瀏覽器；留白會保留目前的加密值。系統不再讀取舊版明文 AI／整合設定，舊的 `.rocket-workspace-settings.env` 亦會從工作區備份排除。
 - `WORKSPACE_SETTINGS_ENCRYPTION_KEY` 可設定為獨立 32 字元以上的密鑰；留白時會使用 `AUTH_SECRET` 衍生加密金鑰。請勿遺失此值，否則既有整合密鑰無法解密。
