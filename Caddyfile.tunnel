@@ -1,0 +1,19 @@
+# Internal-only reverse proxy used by the optional Cloudflare Tunnel profile.
+# Cloudflare terminates public TLS; this service is never published on a host
+# port. Keep the /collab prefix handling aligned with the public Caddyfile.
+:8080 {
+	handle_path /collab/* {
+		reverse_proxy collab:1234
+	}
+
+	handle {
+		reverse_proxy app:3000
+	}
+
+	encode gzip
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains; preload"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+	}
+}

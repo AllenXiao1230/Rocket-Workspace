@@ -28,7 +28,8 @@ import { FormDialog } from "@/components/form-dialog";
 import { useDialogFocus } from "@/lib/use-dialog-focus";
 import { useMenuNavigation } from "@/lib/use-menu-navigation";
 import { mergeMarkdown } from "@/lib/markdown-conflict";
-import { Callout, isSafeDocumentEmbedUrl, SecureEmbed } from "@/lib/editor-extensions";
+import { Callout, SecureEmbed } from "@/lib/editor-extensions";
+import { isSafeDocumentEmbedUrl } from "@/lib/document-media";
 
 type DocumentData = {
   id: string;

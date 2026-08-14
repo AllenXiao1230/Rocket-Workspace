@@ -54,6 +54,26 @@ services:
       retries: 5
       start_period: 10s
 
+  # This profile creates an outbound-only Cloudflare Tunnel, so it works from
+  # CGNAT networks without publishing any additional host ports. The token is
+  # deliberately read from the untracked .env file.
+  tunnel-proxy:
+    image: caddy:2.8.4
+    profiles: ["cloudflare-tunnel"]
+    volumes: ["./Caddyfile.tunnel:/etc/caddy/Caddyfile:ro"]
+    depends_on:
+      app: { condition: service_started }
+      collab: { condition: service_started }
+    restart: unless-stopped
+
+  cloudflared:
+    image: cloudflare/cloudflared@sha256:7743a8b90b6c884a08da99bf4b6de81002e32c2afdd76d10dad4e2f0dbd91b6e
+    profiles: ["cloudflare-tunnel"]
+    command: tunnel --no-autoupdate run --token ${CLOUDFLARE_TUNNEL_TOKEN:-}
+    depends_on:
+      tunnel-proxy: { condition: service_started }
+    restart: unless-stopped
+
   scheduler:
     build: .
     env_file: .env

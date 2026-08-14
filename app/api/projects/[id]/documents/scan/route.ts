@@ -53,6 +53,14 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
     .slice(0, 100);
   let imported = 0;
   let skipped = 0;
+  const importedDocuments: Array<{
+    id: string;
+    title: string;
+    icon: string;
+    parentId: string | null;
+    position: number;
+    updatedAt: Date;
+  }> = [];
   for (const entry of candidates) {
     const filename = entry.name;
     const raw = await readFile(path.join(documentsRoot, filename), "utf8");
@@ -86,6 +94,14 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
         where: { id: document.id },
         data: { markdownHash: snapshot.contentHash, markdownBase: snapshot.markdown },
       });
+    importedDocuments.push({
+      id: document.id,
+      title: document.title,
+      icon: document.icon,
+      parentId: document.parentId,
+      position: document.position,
+      updatedAt: document.updatedAt,
+    });
     imported += 1;
   }
   await prisma.auditEvent.create({
@@ -99,5 +115,5 @@ export async function POST(_: Request, { params }: { params: Promise<{ id: strin
       metadata: { imported, skipped },
     },
   });
-  return NextResponse.json({ imported, skipped });
+  return NextResponse.json({ documents: importedDocuments, imported, skipped });
 }

@@ -1,4 +1,4 @@
-import { isSafeDocumentEmbedUrl } from "@/lib/editor-extensions";
+import { isSafeDocumentImageUrl, isSafeDocumentEmbedUrl } from "@/lib/document-media";
 
 type NodeLike = { type?: unknown; attrs?: Record<string, unknown>; content?: unknown[] };
 
@@ -9,12 +9,11 @@ export function hasOnlySafeDocumentMedia(content: Record<string, unknown>) {
     const value = node as NodeLike;
     if (value.type === "image" || value.type === "secureEmbed") {
       const url = value.attrs?.src ?? value.attrs?.url;
-      const localAttachment =
-        value.type === "image" &&
-        typeof url === "string" &&
-        /^\/api\/attachments\?id=[A-Za-z0-9_-]+$/.test(url);
-      if (typeof url !== "string" || (!localAttachment && !isSafeDocumentEmbedUrl(url)))
-        return false;
+      const safe =
+        value.type === "image"
+          ? typeof url === "string" && isSafeDocumentImageUrl(url)
+          : typeof url === "string" && isSafeDocumentEmbedUrl(url);
+      if (!safe) return false;
     }
     return !Array.isArray(value.content) || value.content.every(visit);
   };

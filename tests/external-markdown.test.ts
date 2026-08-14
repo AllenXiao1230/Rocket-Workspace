@@ -20,4 +20,49 @@ describe("外部 Markdown 文件", () => {
     expect(isExternalMarkdownFilename("../notes.md")).toBe(false);
     expect(isExternalMarkdownFilename("notes.txt")).toBe(false);
   });
+
+  it("將安全的圖片與嵌入指令還原為文件節點", () => {
+    expect(
+      markdownToDocumentContent(
+        '![流程圖](https://cdn.example.com/flow.png "版本 A")\n\n:::embed {"url":"https://www.youtube.com/embed/example","label":"示範影片"} :::',
+      ).content,
+    ).toEqual([
+      {
+        type: "image",
+        attrs: {
+          src: "https://cdn.example.com/flow.png",
+          alt: "流程圖",
+          title: "版本 A",
+        },
+      },
+      {
+        type: "secureEmbed",
+        attrs: { url: "https://www.youtube.com/embed/example", label: "示範影片" },
+      },
+    ]);
+  });
+
+  it("不將不安全的媒體網址建立為可執行節點", () => {
+    expect(markdownToDocumentContent("![危險](javascript:alert(1))").content).toEqual([
+      {
+        type: "paragraph",
+        content: [{ type: "text", text: "![危險](javascript:alert(1))" }],
+      },
+    ]);
+    expect(
+      markdownToDocumentContent(
+        ':::embed {"url":"http://example.com/embed","label":"不安全"} :::',
+      ).content,
+    ).toEqual([
+      {
+        type: "paragraph",
+        content: [
+          {
+            type: "text",
+            text: ':::embed {"url":"http://example.com/embed","label":"不安全"} :::',
+          },
+        ],
+      },
+    ]);
+  });
 });

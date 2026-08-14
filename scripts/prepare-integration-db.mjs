@@ -22,7 +22,7 @@ compose([
 compose([
   "run",
   "--rm",
-  "--build",
+  ...(process.env.SKIP_INTEGRATION_IMAGE_BUILD === "1" ? [] : ["--build"]),
   "--no-deps",
   "-e",
   `TEST_DATABASE_NAME=${databaseName}`,

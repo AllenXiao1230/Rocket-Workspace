@@ -2,6 +2,21 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { signOut } from "next-auth/react";
+import {
+  Bug,
+  CheckSquare,
+  ChartLine,
+  Database,
+  FileText,
+  Flask,
+  GearSix,
+  Package,
+  Plus,
+  SignOut,
+  Sparkle,
+  Trash,
+  UsersThree,
+} from "@phosphor-icons/react";
 import { CollaborativeEditor } from "@/components/collaborative-editor";
 import { DatabaseTable, type DatabaseData } from "@/components/database-view";
 import { WorkspaceSearch } from "@/components/workspace-search";
@@ -71,12 +86,12 @@ const moduleLabels: Record<WorkspaceModule, string> = {
   bom: "物料清單",
   tests: "測試紀錄",
 };
-const moduleIcons: Record<WorkspaceModule, string> = {
-  tasks: "✓",
-  gantt: "▤",
-  issues: "!",
-  bom: "◫",
-  tests: "⌁",
+const moduleIcons = {
+  tasks: CheckSquare,
+  gantt: ChartLine,
+  issues: Bug,
+  bom: Package,
+  tests: Flask,
 };
 
 function DocumentTree({
@@ -471,12 +486,6 @@ export function WorkspaceShell({
     .join("")
     .slice(0, 2)
     .toUpperCase();
-  const completedTasks = projectRecords.tasks.filter(
-    (task) => task.status === "DONE",
-  ).length;
-  const taskProgress = projectRecords.tasks.length
-    ? Math.round((completedTasks / projectRecords.tasks.length) * 100)
-    : 0;
   const activeIssues = projectRecords.issues.filter(
     (issue) => issue.status !== "RESOLVED" && issue.status !== "WONT_FIX",
   ).length;
@@ -761,71 +770,130 @@ export function WorkspaceShell({
         </section>
         <div className="sidebar-create-actions">
           <button className="create-document" onClick={() => requestCreateDocument()}>
-            <span>＋</span> 新增頁面
+            <Plus size={16} weight="bold" aria-hidden="true" /> 新增頁面
           </button>
           <button
             className="create-document template-create"
             onClick={() => setTemplatePicker(true)}
           >
-            <span>◇</span> 從模板建立
+            <FileText size={16} weight="bold" aria-hidden="true" /> 從模板建立
           </button>
         </div>
-        <div className="side-heading">
-          <span>文件庫</span>
-          <span>{documents.length}</span>
+        <div className="desktop-library">
+          <div className="side-heading">
+            <span>文件庫</span>
+            <span>{documents.length}</span>
+          </div>
+          <DocumentTree
+            documents={documents}
+            databases={databases}
+            activeId={activeId}
+            activeDatabaseId={activeDatabaseId}
+            onSelect={(id) => {
+              setActiveId(id);
+              setActiveDatabaseId("");
+              setModule(null);
+              setShowSettings(false);
+              setShowTeam(false);
+              setShowRecycle(false);
+            }}
+            onSelectDatabase={(id) => {
+              setActiveDatabaseId(id);
+              setModule(null);
+              setShowSettings(false);
+              setShowTeam(false);
+              setShowRecycle(false);
+            }}
+            onCreateChild={requestCreateDocument}
+            onMove={moveDocument}
+            onDuplicate={(id) => void duplicateDocument(id)}
+            onDelete={requestDeleteDocument}
+            onLoadMore={() => void loadMoreDocuments()}
+            hasMore={Boolean(nextDocumentCursor)}
+          />
+          <div className="side-heading database-heading">
+            <span>資料庫</span>
+            <span>{databases.length}</span>
+          </div>
+          <nav className="database-nav" aria-label="資料庫">
+            {databases
+              .filter((database) => !database.parentDocumentId)
+              .map((database) => (
+                <button
+                  key={database.id}
+                  className={activeDatabaseId === database.id ? "active" : ""}
+                  onClick={() => {
+                    setActiveDatabaseId(database.id);
+                    setModule(null);
+                    setShowSettings(false);
+                    setShowTeam(false);
+                  }}
+                >
+                  <FileText size={16} aria-hidden="true" />
+                  {database.name}
+                </button>
+              ))}
+          </nav>
         </div>
-        <DocumentTree
-          documents={documents}
-          databases={databases}
-          activeId={activeId}
-          activeDatabaseId={activeDatabaseId}
-          onSelect={(id) => {
-            setActiveId(id);
-            setActiveDatabaseId("");
-            setModule(null);
-            setShowSettings(false);
-            setShowTeam(false);
-            setShowRecycle(false);
-          }}
-          onSelectDatabase={(id) => {
-            setActiveDatabaseId(id);
-            setModule(null);
-            setShowSettings(false);
-            setShowTeam(false);
-            setShowRecycle(false);
-          }}
-          onCreateChild={requestCreateDocument}
-          onMove={moveDocument}
-          onDuplicate={(id) => void duplicateDocument(id)}
-          onDelete={requestDeleteDocument}
-          onLoadMore={() => void loadMoreDocuments()}
-          hasMore={Boolean(nextDocumentCursor)}
-        />
-        <div className="side-heading database-heading">
-          <span>資料庫</span>
-          <span>{databases.length}</span>
-        </div>
-        <nav className="database-nav" aria-label="資料庫">
-          {databases
-            .filter((database) => !database.parentDocumentId)
-            .map((database) => (
-              <button
-                key={database.id}
-                className={activeDatabaseId === database.id ? "active" : ""}
-                onClick={() => {
-                  setActiveDatabaseId(database.id);
-                  setModule(null);
-                  setShowSettings(false);
-                  setShowTeam(false);
-                }}
-              >
-                <span>▦</span>
-                {database.name}
-              </button>
-            ))}
-        </nav>
+        <details className="mobile-library">
+          <summary>瀏覽文件與資料庫</summary>
+          <div className="side-heading">
+            <span>文件庫</span>
+            <span>{documents.length}</span>
+          </div>
+          <DocumentTree
+            documents={documents}
+            databases={databases}
+            activeId={activeId}
+            activeDatabaseId={activeDatabaseId}
+            onSelect={(id) => {
+              setActiveId(id);
+              setActiveDatabaseId("");
+              setModule(null);
+              setShowSettings(false);
+              setShowTeam(false);
+              setShowRecycle(false);
+            }}
+            onSelectDatabase={(id) => {
+              setActiveDatabaseId(id);
+              setModule(null);
+              setShowSettings(false);
+              setShowTeam(false);
+              setShowRecycle(false);
+            }}
+            onCreateChild={requestCreateDocument}
+            onMove={moveDocument}
+            onDuplicate={(id) => void duplicateDocument(id)}
+            onDelete={requestDeleteDocument}
+            onLoadMore={() => void loadMoreDocuments()}
+            hasMore={Boolean(nextDocumentCursor)}
+          />
+          <div className="side-heading database-heading">
+            <span>資料庫</span>
+            <span>{databases.length}</span>
+          </div>
+          <nav className="database-nav" aria-label="資料庫">
+            {databases
+              .filter((database) => !database.parentDocumentId)
+              .map((database) => (
+                <button
+                  key={database.id}
+                  className={activeDatabaseId === database.id ? "active" : ""}
+                  onClick={() => {
+                    setActiveDatabaseId(database.id);
+                    setModule(null);
+                    setShowSettings(false);
+                    setShowTeam(false);
+                  }}
+                >
+                  <FileText size={16} aria-hidden="true" />
+                  {database.name}
+                </button>
+              ))}
+          </nav>
+        </details>
         <button className="create-database" onClick={() => requestCreateDatabase()}>
-          <span>＋</span> 新增資料庫
+          <Database size={16} weight="bold" aria-hidden="true" /> 新增資料庫
         </button>
         <button
           className={`workspace-settings-link sidebar-recycle-link ${showRecycle ? "active" : ""}`}
@@ -837,7 +905,7 @@ export function WorkspaceShell({
             setActiveDatabaseId("");
           }}
         >
-          ♻ 回收桶
+          <Trash size={16} weight="bold" aria-hidden="true" /> 回收桶
         </button>
         <button
           className={`workspace-settings-link ${showTeam ? "active" : ""}`}
@@ -848,7 +916,7 @@ export function WorkspaceShell({
             setActiveDatabaseId("");
           }}
         >
-          ♙ 團隊成員
+          <UsersThree size={16} weight="bold" aria-hidden="true" /> 團隊成員
         </button>
         <button
           className={`workspace-settings-link ${showAi ? "active" : ""}`}
@@ -861,7 +929,7 @@ export function WorkspaceShell({
             setActiveDatabaseId("");
           }}
         >
-          ✦ AI 與整合
+          <Sparkle size={16} weight="bold" aria-hidden="true" /> AI 與整合
         </button>
         <button
           className={`workspace-settings-link ${showSettings ? "active" : ""}`}
@@ -873,7 +941,7 @@ export function WorkspaceShell({
             setActiveDatabaseId("");
           }}
         >
-          ⚙ 設定中心
+          <GearSix size={16} weight="bold" aria-hidden="true" /> 設定中心
         </button>
         <div className="sidebar-footer">
           <span className="safe-indicator" />
@@ -915,7 +983,7 @@ export function WorkspaceShell({
                 setActiveDatabaseId("");
               }}
             >
-              ⚙
+              <GearSix size={20} weight="bold" aria-hidden="true" />
             </button>
             <span className="sync-state">
               <i /> 即時同步中
@@ -930,6 +998,30 @@ export function WorkspaceShell({
             </div>
           </div>
         </header>
+        <nav className="compact-module-nav" aria-label="專案模組">
+          {(Object.keys(moduleLabels) as WorkspaceModule[]).map((name) => {
+            const Icon = moduleIcons[name];
+            return (
+              <button
+                key={name}
+                type="button"
+                className={module === name ? "active" : ""}
+                aria-current={module === name ? "page" : undefined}
+                onClick={() => {
+                  setModule(name);
+                  setSelectedTaskId(null);
+                  setActiveDatabaseId("");
+                  setShowSettings(false);
+                  setShowTeam(false);
+                  setShowRecycle(false);
+                }}
+              >
+                <Icon size={18} weight="bold" aria-hidden="true" />
+                <span>{moduleLabels[name]}</span>
+              </button>
+            );
+          })}
+        </nav>
         {showSettings ? (
           <SettingsPanel
             projectId={project.id}
@@ -952,6 +1044,15 @@ export function WorkspaceShell({
             }
             onProjectCreated={(id) =>
               window.location.assign(`/?project=${encodeURIComponent(id)}`)
+            }
+            onDocumentsScanned={(scanned) =>
+              setDocuments((current) => {
+                const knownIds = new Set(current.map((document) => document.id));
+                return [
+                  ...current,
+                  ...scanned.filter((document) => !knownIds.has(document.id)),
+                ];
+              })
             }
           />
         ) : showAi ? (
@@ -1041,30 +1142,6 @@ export function WorkspaceShell({
         }}
       />
       <aside className="rightbar">
-        <section className="mission-panel">
-          <div className="panel-label">任務整備度</div>
-          <div className="readiness-row">
-            <div
-              className="readiness-ring"
-              style={
-                { "--progress": `${Math.max(taskProgress, 8)}%` } as React.CSSProperties
-              }
-            >
-              <span>{taskProgress}%</span>
-            </div>
-            <div>
-              <strong>工作空間運作正常</strong>
-              <p>文件、資料庫與協作服務已連線。</p>
-            </div>
-          </div>
-          <div className="readiness-foot">
-            <span>
-              <i />
-              ObserveOnly
-            </span>
-            <span>v0.3 引擎</span>
-          </div>
-        </section>
         <MyWorkPanel
           tasks={personalTasks}
           editable={currentUser.role !== "VIEWER"}
@@ -1104,7 +1181,14 @@ export function WorkspaceShell({
                   setShowTeam(false);
                 }}
               >
-                <span className="module-icon">{moduleIcons[name]}</span>
+                {(() => {
+                  const Icon = moduleIcons[name];
+                  return (
+                    <span className="module-icon">
+                      <Icon size={15} weight="bold" aria-hidden="true" />
+                    </span>
+                  );
+                })()}
                 <span className="module-name">{moduleLabels[name]}</span>
                 <span className="module-count">
                   {name === "gantt"
@@ -1150,7 +1234,7 @@ export function WorkspaceShell({
             aria-label="登出"
             onClick={() => signOut({ callbackUrl: "/login" })}
           >
-            ↗
+            <SignOut size={16} weight="bold" aria-hidden="true" />
           </button>
         </div>
       </aside>

@@ -75,6 +75,14 @@ type CalendarFeed = {
   createdAt: string | null;
   updatedAt: string | null;
 };
+type ScannedDocument = {
+  id: string;
+  title: string;
+  icon: string;
+  parentId: string | null;
+  position: number;
+  updatedAt: string;
+};
 
 export function SettingsPanel({
   projectId,
@@ -83,6 +91,7 @@ export function SettingsPanel({
   onMembersChange,
   onProfileSaved,
   onProjectCreated,
+  onDocumentsScanned,
 }: {
   projectId: string;
   workspaceId: string;
@@ -94,6 +103,7 @@ export function SettingsPanel({
   onMembersChange: (members: TeamMember[]) => void;
   onProfileSaved: (profile: Pick<Profile, "name" | "avatarEmoji" | "avatarUrl">) => void;
   onProjectCreated: (projectId: string) => void;
+  onDocumentsScanned: (documents: ScannedDocument[]) => void;
 }) {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -337,11 +347,13 @@ export function SettingsPanel({
       method: "POST",
     });
     const result = (await response.json()) as {
+      documents?: ScannedDocument[];
       imported?: number;
       skipped?: number;
       error?: string;
     };
     setScanWorking(false);
+    if (response.ok) onDocumentsScanned(result.documents || []);
     setScanNotice(
       response.ok
         ? `已加入 ${result.imported || 0} 份外部文件；略過 ${result.skipped || 0} 份既有文件。`

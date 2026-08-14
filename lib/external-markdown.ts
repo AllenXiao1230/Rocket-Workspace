@@ -1,4 +1,5 @@
 import path from "node:path";
+import { isSafeDocumentImageUrl, parseDocumentEmbedMarkdown } from "@/lib/document-media";
 
 type ContentNode = {
   type: string;
@@ -30,12 +31,33 @@ export function markdownBody(markdown: string) {
   return markdown.replace(/^---\r?\n[\s\S]*?\r?\n---\r?\n?/, "").trim();
 }
 
+function imageNode(markdown: string): ContentNode | null {
+  const match = markdown.match(
+    /^!\[([^\]]*)\]\((?:<([^>]+)>|([^\s)]+))(?:\s+"([^"]*)")?\)$/,
+  );
+  if (!match) return null;
+  const src = match[2] || match[3];
+  if (!src || !isSafeDocumentImageUrl(src)) return null;
+  return {
+    type: "image",
+    attrs: {
+      src,
+      alt: match[1].replace(/\\([\\[\]])/g, "$1"),
+      ...(match[4] ? { title: match[4] } : {}),
+    },
+  };
+}
+
 export function markdownToDocumentContent(markdown: string) {
   const nodes: ContentNode[] = markdownBody(markdown)
     .split(/\r?\n\s*\r?\n/)
     .map((block) => block.trim())
     .filter(Boolean)
     .map((block) => {
+      const embed = parseDocumentEmbedMarkdown(block);
+      if (embed) return { type: "secureEmbed", attrs: embed };
+      const image = imageNode(block);
+      if (image) return image;
       const heading = block.match(/^(#{1,6})\s+(.+)$/);
       if (heading)
         return {

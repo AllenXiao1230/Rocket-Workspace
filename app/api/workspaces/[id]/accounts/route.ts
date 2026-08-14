@@ -32,7 +32,7 @@ export async function POST(
   const security = (await readWorkspaceSettings(id)).security;
   if (!security.accountProvisioningEnabled)
     return NextResponse.json({ error: "管理者已停用網頁建立帳號" }, { status: 403 });
-  const parsed = schema.safeParse(await request.json());
+  const parsed = schema.safeParse(await request.json().catch(() => null));
   if (!parsed.success)
     return NextResponse.json(
       { error: "帳號資料不完整；初始密碼至少需要 12 個字元" },
@@ -54,37 +54,48 @@ export async function POST(
       { error: "這個電子郵件已經有帳號，請使用『加入既有帳號』" },
       { status: 409 },
     );
-  const member = await prisma.$transaction(async (tx) => {
-    const user = await tx.user.create({
-      data: {
-        name: parsed.data.name,
-        email,
-        passwordHash: await bcrypt.hash(parsed.data.password, 12),
-        mustChangePassword: security.forcePasswordChangeOnNewAccount,
-      },
+  try {
+    const member = await prisma.$transaction(async (tx) => {
+      const user = await tx.user.create({
+        data: {
+          name: parsed.data.name,
+          email,
+          passwordHash: await bcrypt.hash(parsed.data.password, 12),
+          mustChangePassword: security.forcePasswordChangeOnNewAccount,
+        },
+      });
+      const membership = await tx.membership.create({
+        data: {
+          userId: user.id,
+          workspaceId: id,
+          role: parsed.data.role,
+          nickname: parsed.data.nickname,
+          teamGroup: parsed.data.teamGroup,
+          jobTitle: parsed.data.jobTitle,
+        },
+        include: { user: { select: { id: true, name: true, email: true } } },
+      });
+      await tx.auditEvent.create({
+        data: {
+          userId: session.user.id,
+          action: "workspace.account_created",
+          entity: "membership",
+          entityId: membership.id,
+          workspaceId: id,
+          metadata: { role: parsed.data.role },
+        },
+      });
+      return membership;
     });
-    const membership = await tx.membership.create({
-      data: {
-        userId: user.id,
-        workspaceId: id,
-        role: parsed.data.role,
-        nickname: parsed.data.nickname,
-        teamGroup: parsed.data.teamGroup,
-        jobTitle: parsed.data.jobTitle,
-      },
-      include: { user: { select: { id: true, name: true, email: true } } },
-    });
-    await tx.auditEvent.create({
-      data: {
-        userId: session.user.id,
-        action: "workspace.account_created",
-        entity: "membership",
-        entityId: membership.id,
-        workspaceId: id,
-        metadata: { role: parsed.data.role },
-      },
-    });
-    return membership;
-  });
-  return NextResponse.json(member, { status: 201 });
+    return NextResponse.json(member, { status: 201 });
+  } catch (error) {
+    const code =
+      typeof error === "object" && error && "code" in error ? String(error.code) : "";
+    if (code === "P2002")
+      return NextResponse.json(
+        { error: "這個電子郵件已經有帳號，請使用『加入既有帳號』" },
+        { status: 409 },
+      );
+    return NextResponse.json({ error: "無法建立帳號" }, { status: 500 });
+  }
 }

@@ -6,11 +6,12 @@
 
 ## 已完成
 
-- **工作空間與權限**：登入、`OWNER`／`ADMIN`／`EDITOR`／`VIEWER` 角色、專案空間、成員名單、暱稱、所屬分組、職位、Emoji 與可私密讀取的照片頭像（MinIO）。
+- **工作空間與權限**：登入、`OWNER`／`ADMIN`／`EDITOR`／`VIEWER` 角色、專案空間、成員名單、暱稱、所屬分組、職位、Emoji 與可私密讀取的照片頭像（MinIO）；OWNER／ADMIN 可將既有登入帳號加入工作空間，也可在啟用安全開關後建立新登入帳號並立即加入。
 - **文件工作區**：樹狀頁面、子頁面與文件內同層資料庫、Emoji 頁面圖示、展開／收合、拖放排序與移動、複製、回收桶與還原；另有頁面屬性、鎖定、送審／核准／要求修改、反向連結、版本 Markdown diff，以及圖形化文件模板選擇器。
 - **編輯與協作**：Tiptap 區塊編輯、斜線選單、浮動表格工具、表格頂端／左側的欄列增減把手、可拖曳欄寬、右鍵選單、連結、待辦、程式碼、引用、Callout、表格、圖片與安全外嵌（影片／網頁）、復原／重做；Yjs 即時同步、協作游標、離線 IndexedDB、LevelDB 持久化與 Redis 更新／presence 傳播，供多個協作容器共用文件狀態。
-- **Markdown 檔案**：每份文件同步至 `workspace-data/documents/`；可原始碼編輯、讀取外部修改、下載 `.md`，寫入採原子更名。外部變更提供三方合併預覽：安全情況自動選用單側變更，雙方修改時以衝突標記保留兩份文字。
+- **Markdown 檔案**：每份文件同步至 `workspace-data/documents/`；可原始碼編輯、讀取外部修改、下載 `.md`，寫入採原子更名。圖片會保留為標準 Markdown 圖片語法；安全嵌入則以可驗證的 `:::embed {"url":"…","label":"…"} :::` 指令往返。外部變更提供三方合併預覽：安全情況自動選用單側變更，雙方修改時以衝突標記保留兩份文字。從設定掃描外部新增的 Markdown 後，新增文件會立即加入目前的文件列表。
 - **資料庫**：欄位型別、表格／看板／行事曆／時間軸／圖庫／清單／表單檢視、多層 AND/OR 篩選群組、組合排序、關聯、Rollup、公式、模板、自動化、CSV 匯入／匯出、欄列拖放排序、列回收桶與欄位回收桶；新增欄位時可設定說明、文字限制、數字格式與精度、日期時間、選項、檔案上限等型別屬性，列與欄位設定、選項、關聯及值皆由伺服器端驗證。
+- **產品深化**：公式評估錯誤會保留近期、具工作區／資料庫權限保護的紀錄，且不儲存公式原文或列值；Rollup 由 scheduler 背景重算並優先讀取快取。文件可建立雙向同步文字區塊，圖片與安全嵌入則能在 Markdown 與協作編輯器間完整往返。
 - **專案管理**：任務、Issue、BOM、測試紀錄可新增、編輯、軟刪除與還原；任務可指派團隊成員、設定父／子任務、里程碑、SLA、週期規則、工時與多個前置任務，並阻止循環依賴。甘特圖支援拖拉日期、CPM forward/backward pass、slack、基線、資源負載、專案工作日曆與依前置任務自動順延；任務另有看板拖放。右側欄按登入帳號彙整跨專案的「我的工作」與「待辦事項」，可直接標記完成。內建 scheduler 會產生到期的週期任務，並發出即將到期 SLA 通知。BOM 與測試紀錄支援 MinIO 附件、回收／還原，以及僅 OWNER／ADMIN 能確認的永久刪除；測試支援計畫、步驟、量測、簽核、需求追溯與可下載的測試報告／追溯矩陣 CSV。
 - **文件協作周邊**：留言串、回覆、解析、刪除、版本歷史與還原、MinIO 附件上傳／下載／刪除、站內通知。
 - **日曆同步**：每個專案可在設定中心建立可輪替、可撤銷的標準 iCalendar（`.ics`）訂閱網址；Google Calendar、Apple Calendar、Outlook 等可唯讀同步有日期的任務與測試紀錄，權杖只儲存 SHA-256 雜湊。
@@ -25,10 +26,9 @@
 這些項目尚未宣稱完成，適合列入後續迭代：
 
 1. **帳號與企業整合**：沒有忘記密碼信、邀請信、2FA、SSO、帳號停用、細粒度頁面分享或對外訪客流程。（依本輪範圍暫不處理）
-2. **產品深化的待辦**：公式錯誤已有近期歷史可供查閱，且不保存公式原文或列值；Rollup 由 scheduler 背景重算並優先讀取快取；文件可建立雙向同步文字區塊。圖片與嵌入內容是可協作的 Tiptap 節點，但 Markdown 只能保留退化的文字表示。
-3. **工作流深化的待辦**：通知目前涵蓋 SLA 到期提醒，尚未提供管理者可編輯的細粒度通知規則。週期任務固定依日曆規則建立，不會套用專案工作日或假日例外。
-4. **進階外部整合**：目前提供 OpenAI-compatible、Ollama、GitHub Issue、通用 Webhook 與 iCalendar 唯讀訂閱；AI 的串流/停止、範圍引用、成本上限，以及 OAuth/App 安裝、同步游標、重試/DLQ、GitHub 寫入、CalDAV／Google／Outlook 雙向寫入仍未實作。AI 請求與 Webhook 測試已有不含敏感內容的稽核紀錄。
-5. **營運驗證深度**：已加入單元測試、備份完整性檢查、隔離還原演練及可重複執行的三節點 Yjs 壓測；跨可用區故障轉移與瀏覽器端端對端測試仍應在正式擴容前執行。
+2. **工作流深化的待辦**：通知目前涵蓋 SLA 到期提醒，尚未提供管理者可編輯的細粒度通知規則。週期任務固定依日曆規則建立，不會套用專案工作日或假日例外。
+3. **進階外部整合**：目前提供 OpenAI-compatible、Ollama、GitHub Issue、通用 Webhook 與 iCalendar 唯讀訂閱；AI 的串流/停止、範圍引用、成本上限，以及 OAuth/App 安裝、同步游標、重試/DLQ、GitHub 寫入、CalDAV／Google／Outlook 雙向寫入仍未實作。AI 請求與 Webhook 測試已有不含敏感內容的稽核紀錄。
+4. **營運驗證深度**：已加入單元測試、備份完整性檢查、隔離還原演練及可重複執行的三節點 Yjs 壓測；跨可用區故障轉移與瀏覽器端端對端測試仍應在正式擴容前執行。
 
 完整限制與改善方向請見 [docs/functionality-audit.md](docs/functionality-audit.md) 與 [docs/markdown-editor-audit.md](docs/markdown-editor-audit.md)。
 
@@ -66,7 +66,7 @@
 - 在 **任務** 模組可切換看板並拖拉卡片改變狀態；週期任務與 SLA 提醒由 `scheduler` 容器自動處理。可在甘特圖的專案工作日曆中選擇每週工作日並新增／移除特定假日；拖拉任務、依相依關係自動排程與 CPM 工作日長度都會避開這些非工作日。週期任務的假日策略仍維持其週期規則，不會自動改期。
 - 在資料庫的 **篩選與排序** 中建立 AND／OR 條件群組與多欄排序，儲存檢視後供團隊共用。CSV 匯入要求欄名對應既有欄位名稱，單次最多 2,000 列；匯入值仍會經伺服器型別驗證。
 - BOM 與測試紀錄可附加檔案；於紀錄詳細資料啟用編輯後，可在附件回收桶還原誤刪附件，只有 OWNER／ADMIN 可確認永久刪除。測試報告與需求追溯矩陣可由 `GET /api/projects/<projectId>/tests/report` 下載 CSV，且仍須以登入權限存取。
-- 到 **設定中心** 管理主題、專案、團隊帳號、安全開關與該工作空間的外部整合。只有擁有者與管理員可調整工作空間設定；bootstrap 管理員同時是系統管理員，可調整主機備份排程。
+- 到 **設定中心 → 成員帳號、分組與職位** 新增使用者：輸入既有登入帳號的電子郵件即可加入工作空間；若要建立新的登入帳號，先在同頁的 **安全與功能開關** 啟用「網頁建立帳號」。只有擁有者與管理員可調整工作空間設定；bootstrap 管理員同時是系統管理員，可調整主機備份排程。
 - 到 **設定中心 → 專案日曆同步** 產生訂閱網址，立刻複製到外部日曆的「透過網址訂閱」功能。網址只會顯示一次；若外流或需要換用日曆帳號，按「輪替訂閱網址」。停用後舊訂閱會回傳不存在。
 
 ## 架構與資料位置
@@ -120,7 +120,16 @@ docker compose exec backup restore-drill <backup-id>
   ```
 
   Caddy 與 Compose 的 `app`／`collab` 服務必須在同一主機；兩個上游加入內部 Compose network 與 Caddy 的 `proxy` network，並僅將連接埠綁定至主機 loopback，不對公網開放。
-- 使用 Cloudflare 管理 DNS 時，將 `workspace` 的 A／AAAA 記錄指向此主機；若啟用橘色雲代理，Cloudflare 的 SSL/TLS 模式必須設為 **Full (strict)**，不可使用 Flexible，並保持 Network → WebSockets 為 On。此部署使用 Caddy 已掛載的 Cloudflare Origin Certificate，不需要 Caddy DNS 外掛或 API Token；Caddy 容器必須對外開放 80 與 443。
+
+- 若主機具有可直接連入的公網 IP，使用 Cloudflare 管理 DNS 時，將 `workspace` 的 A／AAAA 記錄指向此主機；若啟用橘色雲代理，Cloudflare 的 SSL/TLS 模式必須設為 **Full (strict)**，不可使用 Flexible，並保持 Network → WebSockets 為 On。此部署使用 Caddy 已掛載的 Cloudflare Origin Certificate，不需要 Caddy DNS 外掛或 API Token；Caddy 容器必須對外開放 80 與 443。
+- 若路由器 WAN IP 為私有位址（例如 `10.x.x.x`），代表位於 CGNAT 後方，Port Forwarding 無法使用；請改用 Cloudflare Tunnel。在 Cloudflare Dashboard → **Networking → Tunnels** 建立 remotely-managed Tunnel，將 token 寫入未納入 Git 的 `.env`：`CLOUDFLARE_TUNNEL_TOKEN=…`。啟用本機連線後，為 `workspace.studioxuan.qzz.io` 新增 Published Application，Service URL 設為 `http://tunnel-proxy:8080`，再執行：
+
+  ```bash
+  docker compose --profile cloudflare-tunnel up -d
+  ```
+
+  `cloudflared` 只會向 Cloudflare 建立出站連線；`tunnel-proxy` 不公開主機埠，並會將 `/collab/*` 去除前綴後代理至 Yjs 協作服務。首次設定可執行 `bash scripts/setup-cloudflare-tunnel.sh`，它會在終端機隱藏輸入 token、啟動 profile 並逐步引導 Dashboard 操作。Cloudflare Dashboard 應顯示 Tunnel 為 **Healthy**；不需要 A／AAAA 記錄、路由器轉發或額外的 UFW 開放規則。
+
 - 不要將 PostgreSQL、Redis、MinIO 對公網暴露。Compose 預設只把 MinIO 與協作連接埠綁在本機。
 - 主機的 Monit 告警可執行 `sudo bash scripts/configure-monit-email-format.sh` 套用繁體中文、可快速判讀的信件格式；它不會變更 Gmail 的 SMTP、寄件者或收件人設定，且會先驗證語法再重啟 Monit。詳見 [每日伺服器維護](docs/server-optimization-daily.md#monit-告警郵件格式)。
 - **設定中心 → 安全與功能開關** 可關閉協作、附件、Markdown 下載、網頁帳號建立、強制首次改密碼與登入限速；設定依工作空間隔離，帳號同時加入多個空間時採最嚴格的密碼與登入限制。
@@ -236,6 +245,12 @@ pnpm build
 ```bash
 pnpm test:integration:prepare
 pnpm test:integration
+```
+
+文件掃描的瀏覽器全端測試會建立唯一的暫用資料庫與 Markdown 目錄，以正式 production build 驗證登入、50 筆 cursor 分頁、23 份外部文件掃描、列表即時更新及重掃去重，結束後自動移除測試容器、資料庫與檔案。執行前需先啟動 Compose 的 PostgreSQL：
+
+```bash
+pnpm test:e2e:document-scan
 ```
 
 資料庫 schema 的唯一來源是 [prisma/schema.prisma](prisma/schema.prisma)。任何結構變更都必須新增 Prisma migration，不能只依賴 `db push`。

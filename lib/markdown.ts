@@ -1,3 +1,8 @@
+import {
+  isSafeDocumentImageUrl,
+  renderDocumentEmbedMarkdown,
+} from "@/lib/document-media";
+
 type Mark = { type: string; attrs?: Record<string, unknown> };
 type Node = {
   type?: string;
@@ -9,6 +14,16 @@ type Node = {
 
 function escapeCell(value: string) {
   return value.replace(/\|/g, "\\|").replace(/\n/g, " ");
+}
+function escapeImageText(value: unknown) {
+  return String(value || "").replace(/[\\[\]]/g, "\\$&");
+}
+function renderImage(attrs: Record<string, unknown> = {}) {
+  const src = typeof attrs.src === "string" ? attrs.src : "";
+  if (!isSafeDocumentImageUrl(src)) return "";
+  const alt = escapeImageText(attrs.alt);
+  const title = typeof attrs.title === "string" ? attrs.title.replace(/"/g, '\\"') : "";
+  return title ? `![${alt}](${src} "${title}")\n\n` : `![${alt}](${src})\n\n`;
 }
 function inline(nodes: Node[] = []) {
   return nodes
@@ -47,6 +62,11 @@ function render(node: Node, depth = 0): string {
   if (node.type === "codeBlock")
     return `\`\`\`${String(node.attrs?.language || "")}\n${inline(children)}\n\`\`\`\n\n`;
   if (node.type === "horizontalRule") return "---\n\n";
+  if (node.type === "image") return renderImage(node.attrs);
+  if (node.type === "secureEmbed") {
+    const markdown = renderDocumentEmbedMarkdown(node.attrs?.url, node.attrs?.label);
+    return markdown ? `${markdown}\n\n` : "";
+  }
   if (
     node.type === "bulletList" ||
     node.type === "orderedList" ||

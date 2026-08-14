@@ -29,9 +29,9 @@ describe("工作空間設定與導覽介面", () => {
   it("將回收桶放在資料庫區塊之後", () => {
     const source = read("components/workspace-shell.tsx");
     expect(source.indexOf('className="database-nav"')).toBeLessThan(
-      source.indexOf("♻ 回收桶"),
+      source.indexOf("> 回收桶"),
     );
-    expect(source.indexOf("♻ 回收桶")).toBeLessThan(source.indexOf("♙ 團隊成員"));
+    expect(source.indexOf("> 回收桶")).toBeLessThan(source.indexOf("> 團隊成員"));
   });
 
   it("讓外觀與定時備份卡片使用不同的設定網格區域", () => {

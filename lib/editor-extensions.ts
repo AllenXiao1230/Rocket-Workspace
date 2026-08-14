@@ -1,13 +1,11 @@
 import { mergeAttributes, Node } from "@tiptap/core";
+import {
+  isSafeDocumentEmbedUrl,
+  parseDocumentEmbedMarkdown,
+  renderDocumentEmbedMarkdown,
+} from "@/lib/document-media";
 
-export function isSafeDocumentEmbedUrl(value: string) {
-  try {
-    const url = new URL(value);
-    return url.protocol === "https:" && Boolean(url.hostname);
-  } catch {
-    return false;
-  }
-}
+export { isSafeDocumentEmbedUrl } from "@/lib/document-media";
 
 export const Callout = Node.create({
   name: "callout",
@@ -62,6 +60,26 @@ export const SecureEmbed = Node.create({
   },
   parseHTML() {
     return [{ tag: "figure[data-embed-url]" }];
+  },
+  markdownTokenizer: {
+    name: "secureEmbed",
+    level: "block",
+    start(source) {
+      return source.search(/^:::embed\s+\{/m);
+    },
+    tokenize(source) {
+      const raw = source.match(/^:::embed\s+\{[^\r\n]*\}\s+:::(?:\r?\n|$)/)?.[0];
+      return raw && parseDocumentEmbedMarkdown(raw)
+        ? { type: "secureEmbed", raw, text: raw }
+        : undefined;
+    },
+  },
+  parseMarkdown(token, helpers) {
+    const embed = parseDocumentEmbedMarkdown(token.raw || "");
+    return embed ? helpers.createNode("secureEmbed", embed, []) : [];
+  },
+  renderMarkdown(node) {
+    return renderDocumentEmbedMarkdown(node.attrs?.url, node.attrs?.label);
   },
   renderHTML({ HTMLAttributes }) {
     const url = String(HTMLAttributes["data-embed-url"] || "");

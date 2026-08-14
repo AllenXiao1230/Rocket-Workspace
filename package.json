@@ -19,6 +19,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
+    "test:e2e:document-scan": "node scripts/run-document-scan-e2e.mjs",
     "test:integration:prepare": "node scripts/prepare-integration-db.mjs",
     "test:integration": "node scripts/run-integration-tests.mjs",
     "db:generate": "prisma generate",
@@ -34,6 +35,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.799.0",
+    "@phosphor-icons/react": "^2.1.10",
     "@prisma/client": "^6.8.2",
     "@tiptap/core": "^3.29.2",
     "@tiptap/extension-collaboration": "^3.0.7",

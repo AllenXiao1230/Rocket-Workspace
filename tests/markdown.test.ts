@@ -1,4 +1,8 @@
 import { describe, expect, it } from "vitest";
+import Image from "@tiptap/extension-image";
+import StarterKit from "@tiptap/starter-kit";
+import { MarkdownManager } from "@tiptap/markdown";
+import { SecureEmbed } from "@/lib/editor-extensions";
 import { tiptapToMarkdown } from "@/lib/markdown";
 
 describe("tiptapToMarkdown", () => {
@@ -66,5 +70,62 @@ describe("tiptapToMarkdown", () => {
 
   it("空白文件仍輸出穩定的換行", () => {
     expect(tiptapToMarkdown({ type: "doc", content: [] })).toBe("\n");
+  });
+
+  it("以可逆的 Markdown 保留圖片與安全嵌入內容", () => {
+    const markdown = tiptapToMarkdown({
+      type: "doc",
+      content: [
+        {
+          type: "image",
+          attrs: {
+            src: "https://cdn.example.com/diagram.png",
+            alt: "系統架構圖",
+            title: "架構版本 1",
+          },
+        },
+        {
+          type: "secureEmbed",
+          attrs: {
+            url: "https://www.youtube.com/embed/example",
+            label: '示範 "影片"',
+          },
+        },
+      ],
+    });
+
+    expect(markdown).toContain(
+      '![系統架構圖](https://cdn.example.com/diagram.png "架構版本 1")',
+    );
+    expect(markdown).toContain(
+      ':::embed {"url":"https://www.youtube.com/embed/example","label":"示範 \\"影片\\""} :::',
+    );
+  });
+
+  it("編輯器會還原並重新輸出安全嵌入指令", () => {
+    const manager = new MarkdownManager({ extensions: [StarterKit, Image, SecureEmbed] });
+    const markdown =
+      ':::embed {"url":"https://www.youtube.com/embed/example","label":"示範影片"} :::\n';
+
+    expect(manager.parse(markdown)).toMatchObject({
+      type: "doc",
+      content: [
+        {
+          type: "secureEmbed",
+          attrs: { url: "https://www.youtube.com/embed/example", label: "示範影片" },
+        },
+      ],
+    });
+    expect(
+      manager.serialize({
+        type: "doc",
+        content: [
+          {
+            type: "secureEmbed",
+            attrs: { url: "https://www.youtube.com/embed/example", label: "示範影片" },
+          },
+        ],
+      }),
+    ).toBe(markdown.trim());
   });
 });

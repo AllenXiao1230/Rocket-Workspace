@@ -179,7 +179,7 @@ export async function POST(
       );
     if (message === "USER_NOT_FOUND")
       return NextResponse.json(
-        { error: "Create the user account before adding a membership" },
+        { error: "找不到這個登入帳號；請先建立帳號。" },
         { status: 404 },
       );
     const code =
