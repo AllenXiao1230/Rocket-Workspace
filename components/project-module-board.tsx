@@ -8,6 +8,7 @@ import { RecordAttachments } from "@/components/record-attachments";
 import { StatusMessage } from "@/components/status-message";
 
 export type ProjectModule = "tasks" | "issues" | "bom" | "tests";
+export type TaskView = "table" | "board";
 type DetailDialog = "worklog" | "test-step" | "test-measurement" | "test-approval";
 export type ModuleRecord = {
   id: string;
@@ -43,6 +44,8 @@ export function ProjectModuleBoard({
   canPurge,
   initialSelectedId,
   onSelectedIdChange,
+  taskView,
+  onTaskViewChange,
   onRecordsChange,
 }: {
   projectId: string;
@@ -53,6 +56,8 @@ export function ProjectModuleBoard({
   canPurge: boolean;
   initialSelectedId?: string | null;
   onSelectedIdChange?: (id: string | null) => void;
+  taskView: TaskView;
+  onTaskViewChange: (view: TaskView) => void;
   onRecordsChange?: (records: ModuleRecord[]) => void;
 }) {
   const [records, setRecords] = useState(initialRecords);
@@ -64,6 +69,8 @@ export function ProjectModuleBoard({
   const [showTrash, setShowTrash] = useState(false);
   const [trashed, setTrashed] = useState<TrashedRecord[]>([]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedTaskLoading, setSelectedTaskLoading] = useState(false);
+  const [selectedTaskError, setSelectedTaskError] = useState("");
   const [draggedTaskId, setDraggedTaskId] = useState<string | null>(null);
   const [pendingRemoval, setPendingRemoval] = useState<ModuleRecord | null>(null);
   const onRecordsChangeRef = useRef(onRecordsChange);
@@ -110,13 +117,58 @@ export function ProjectModuleBoard({
     };
   }, [projectId, module]);
   useEffect(() => {
-    if (
-      initialSelectedId &&
-      records.some((record) => record.id === initialSelectedId) &&
-      selectedId !== initialSelectedId
-    )
-      setSelectedId(initialSelectedId);
+    if (!initialSelectedId) {
+      if (selectedId) setSelectedId(null);
+      return;
+    }
+    if (!records.some((record) => record.id === initialSelectedId)) {
+      // A URL may switch directly from one deep-linked task to another. Never
+      // leave the previous record open while the requested task is hydrated.
+      if (selectedId) setSelectedId(null);
+      return;
+    }
+    if (selectedId !== initialSelectedId) setSelectedId(initialSelectedId);
   }, [initialSelectedId, records, selectedId]);
+  useEffect(() => {
+    if (
+      module !== "tasks" ||
+      !initialSelectedId ||
+      records.some((record) => record.id === initialSelectedId)
+    ) {
+      setSelectedTaskLoading(false);
+      setSelectedTaskError("");
+      return;
+    }
+    let cancelled = false;
+    setSelectedTaskLoading(true);
+    setSelectedTaskError("");
+    void fetch(
+      `/api/projects/${projectId}/records/${module}/${encodeURIComponent(initialSelectedId)}`,
+      { cache: "no-store" },
+    )
+      .then(async (response) => {
+        if (!response.ok) throw new Error("找不到指定任務或你沒有檢視權限。");
+        return response.json() as Promise<ModuleRecord>;
+      })
+      .then((record) => {
+        if (cancelled || !record?.id) return;
+        setRecords((current) =>
+          current.some((item) => item.id === record.id) ? current : [record, ...current],
+        );
+      })
+      .catch((error: unknown) => {
+        if (cancelled) return;
+        setSelectedTaskError(
+          error instanceof Error ? error.message : "無法載入指定任務，請稍後再試。",
+        );
+      })
+      .finally(() => {
+        if (!cancelled) setSelectedTaskLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [initialSelectedId, module, projectId, records]);
   async function request(
     path: string,
     method: "POST" | "PATCH" | "DELETE",
@@ -210,7 +262,11 @@ export function ProjectModuleBoard({
         nextCursor?: string | null;
       };
       if (!response.ok) throw new Error();
-      const next = [...records, ...(page.records || [])];
+      const knownIds = new Set(records.map((record) => record.id));
+      const next = [
+        ...records,
+        ...(page.records || []).filter((record) => !knownIds.has(record.id)),
+      ];
       commitRecords(next);
       setNextCursor(page.nextCursor || null);
     } catch {
@@ -554,6 +610,34 @@ export function ProjectModuleBoard({
           <p>{info.hint}</p>
         </div>
         <div className="module-hero-actions">
+          {module === "tasks" && (
+            <div role="group" aria-label="任務檢視">
+              <button
+                className={
+                  taskView === "table"
+                    ? "module-edit-toggle active"
+                    : "module-edit-toggle"
+                }
+                type="button"
+                aria-pressed={taskView === "table"}
+                onClick={() => onTaskViewChange("table")}
+              >
+                表格
+              </button>
+              <button
+                className={
+                  taskView === "board"
+                    ? "module-edit-toggle active"
+                    : "module-edit-toggle"
+                }
+                type="button"
+                aria-pressed={taskView === "board"}
+                onClick={() => onTaskViewChange("board")}
+              >
+                看板
+              </button>
+            </div>
+          )}
           {editable && (
             <button
               className={canEdit ? "module-edit-toggle active" : "module-edit-toggle"}
@@ -601,8 +685,11 @@ export function ProjectModuleBoard({
         <div className="empty">正在載入紀錄…</div>
       ) : (
         <>
-          {table}
-          {kanban}
+          {module === "tasks" ? (taskView === "table" ? table : kanban) : table}
+          {selectedTaskLoading && <StatusMessage>正在載入指定任務…</StatusMessage>}
+          {selectedTaskError && (
+            <StatusMessage tone="alert">{selectedTaskError}</StatusMessage>
+          )}
           {selected && (
             <ModuleRecordDetails
               projectId={projectId}

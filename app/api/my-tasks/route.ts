@@ -18,7 +18,7 @@ export async function GET(request: Request) {
     take: take + 1,
     ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     include: {
-      project: { select: { id: true, name: true, code: true } },
+      project: { select: { id: true, name: true, code: true, workspaceId: true } },
       dependencies: {
         where: { dependsOn: { deletedAt: null } },
         include: { dependsOn: { select: { id: true, title: true, status: true } } },
@@ -36,6 +36,7 @@ export async function GET(request: Request) {
       dueDate: task.dueDate,
       updatedAt: task.updatedAt,
       dependencies: task.dependencies,
+      workspaceId: task.project.workspaceId,
       projectId: task.project.id,
       projectName: task.project.name,
       projectCode: task.project.code,

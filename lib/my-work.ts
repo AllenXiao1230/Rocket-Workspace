@@ -5,6 +5,7 @@ export type MyTask = {
   priority: number;
   dueDate: string | Date | null;
   updatedAt?: string | Date;
+  workspaceId: string;
   projectId: string;
   projectName: string;
   projectCode: string;

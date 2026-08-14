@@ -2,8 +2,22 @@ import { redirect } from "next/navigation";
 import { rawAuth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { WorkspaceShell } from "@/components/workspace-shell";
+import type { TaskView } from "@/components/project-module-board";
 
 export const dynamic = "force-dynamic";
+
+const workspaceModules = ["tasks", "gantt", "issues", "bom", "tests"] as const;
+const workspacePanels = ["settings", "team", "recycle", "ai"] as const;
+const taskViews = ["table", "board"] as const;
+type WorkspaceModule = (typeof workspaceModules)[number];
+type WorkspacePanel = (typeof workspacePanels)[number];
+
+const isWorkspaceModule = (value: string | undefined): value is WorkspaceModule =>
+  Boolean(value && workspaceModules.includes(value as WorkspaceModule));
+const isWorkspacePanel = (value: string | undefined): value is WorkspacePanel =>
+  Boolean(value && workspacePanels.includes(value as WorkspacePanel));
+const isTaskView = (value: string | undefined): value is TaskView =>
+  Boolean(value && taskViews.includes(value as TaskView));
 
 // Keep the first response bounded to one project. Other projects are only
 // represented by their selector metadata instead of serializing every document,
@@ -15,7 +29,11 @@ export default async function Home({
     workspace?: string;
     project?: string;
     document?: string;
+    database?: string;
+    module?: string;
     task?: string;
+    taskView?: string;
+    panel?: string;
   }>;
 }) {
   const session = await rawAuth();
@@ -29,8 +47,21 @@ export default async function Home({
     workspace: requestedWorkspaceId,
     project: requestedProjectId,
     document: requestedDocumentId,
+    database: requestedDatabaseId,
+    module: requestedModuleId,
     task: requestedTaskId,
+    taskView: requestedTaskViewId,
+    panel: requestedPanelId,
   } = await searchParams;
+  const requestedModule = isWorkspaceModule(requestedModuleId)
+    ? requestedModuleId
+    : undefined;
+  const requestedPanel = isWorkspacePanel(requestedPanelId)
+    ? requestedPanelId
+    : undefined;
+  const requestedTaskView = isTaskView(requestedTaskViewId)
+    ? requestedTaskViewId
+    : undefined;
   const memberships = await prisma.membership.findMany({
     where: { userId: session.user.id },
     include: { workspace: { select: { id: true, name: true } } },
@@ -65,18 +96,49 @@ export default async function Home({
     },
   });
   if (!workspace) redirect("/");
-  const task = requestedTaskId
-    ? await prisma.task.findFirst({
-        where: {
-          id: requestedTaskId,
-          deletedAt: null,
-          project: { workspaceId: membership.workspaceId },
-        },
-        select: { id: true, projectId: true },
-      })
-    : null;
+  const [task, requestedDocument, requestedDatabase] = await Promise.all([
+    requestedTaskId
+      ? prisma.task.findFirst({
+          where: {
+            id: requestedTaskId,
+            deletedAt: null,
+            project: { workspaceId: membership.workspaceId },
+          },
+          select: { id: true, projectId: true },
+        })
+      : null,
+    requestedDocumentId
+      ? prisma.document.findFirst({
+          where: {
+            id: requestedDocumentId,
+            deletedAt: null,
+            project: { workspaceId: membership.workspaceId },
+          },
+          select: {
+            id: true,
+            projectId: true,
+            title: true,
+            icon: true,
+            parentId: true,
+            position: true,
+            updatedAt: true,
+          },
+        })
+      : null,
+    requestedDatabaseId
+      ? prisma.database.findFirst({
+          where: {
+            id: requestedDatabaseId,
+            project: { workspaceId: membership.workspaceId },
+          },
+          select: { id: true, projectId: true },
+        })
+      : null,
+  ]);
   const projectId =
     task?.projectId ||
+    requestedDocument?.projectId ||
+    requestedDatabase?.projectId ||
     workspace.projects.find((project) => project.id === requestedProjectId)?.id ||
     workspace.projects[0]?.id;
   if (!projectId)
@@ -112,10 +174,19 @@ export default async function Home({
   });
   if (!project) redirect("/");
   const documents = project.documents.slice(0, 50);
+  const selectedDocument =
+    requestedDocument?.projectId === project.id &&
+    !documents.some((document) => document.id === requestedDocument.id)
+      ? requestedDocument
+      : null;
+  const visibleDocuments = selectedDocument
+    ? [...documents, selectedDocument]
+    : documents;
   const nextDocumentCursor =
     project.documents.length > 50 ? documents.at(-1)?.id || null : null;
   return (
     <WorkspaceShell
+      key={`${workspace.id}:${project.id}`}
       user={{
         id: session.user.id,
         name: account?.name || session.user.name || session.user.email || "Member",
@@ -128,15 +199,24 @@ export default async function Home({
       workspaces={memberships.map((item) => item.workspace)}
       project={{ id: project.id, name: project.name, code: project.code }}
       projects={workspace.projects}
-      documents={documents}
+      documents={visibleDocuments}
       nextDocumentCursor={nextDocumentCursor}
       initialActiveId={
-        documents.some((document) => document.id === requestedDocumentId)
+        visibleDocuments.some((document) => document.id === requestedDocumentId)
           ? requestedDocumentId
           : undefined
       }
-      initialModule={task ? "tasks" : undefined}
+      initialDatabaseId={
+        project.databases.some((database) => database.id === requestedDatabase?.id)
+          ? requestedDatabase?.id
+          : undefined
+      }
+      initialModule={task ? "tasks" : requestedModule}
       initialSelectedTaskId={task?.id}
+      initialTaskView={
+        task || requestedModule === "tasks" ? requestedTaskView : undefined
+      }
+      initialPanel={requestedPanel}
       databases={project.databases.map((database) => ({
         ...database,
         properties: [],

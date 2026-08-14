@@ -61,6 +61,34 @@ const settingsSchema = z.object({
     .optional(),
 });
 
+const formFieldBySchemaPath: Record<string, string> = {
+  workspaceName: "workspaceName",
+  projectName: "projectName",
+  projectCode: "projectCode",
+  projectDescription: "projectDescription",
+  backupIntervalHours: "backupIntervalHours",
+  backupRetentionDays: "backupRetentionDays",
+  "security.minimumPasswordLength": "minimumPasswordLength",
+  "security.loginMaxAttempts": "loginMaxAttempts",
+  "security.loginWindowMinutes": "loginWindowMinutes",
+  "ai.baseUrl": "aiBaseUrl",
+  "ai.model": "aiModel",
+  "ai.apiKey": "aiApiKey",
+  "integrations.githubRepository": "githubRepository",
+  "integrations.webhookUrl": "webhookUrl",
+  "integrations.githubToken": "githubToken",
+  "integrations.webhookSecret": "webhookSecret",
+};
+
+function schemaFieldErrors(issues: z.ZodIssue[]) {
+  const fieldErrors: Record<string, string> = {};
+  for (const issue of issues) {
+    const field = formFieldBySchemaPath[issue.path.join(".")];
+    if (field && !fieldErrors[field]) fieldErrors[field] = issue.message;
+  }
+  return fieldErrors;
+}
+
 async function accessFor(projectId: string) {
   const session = await auth();
   if (!session?.user?.id) return null;
@@ -114,11 +142,16 @@ export async function PATCH(
   if (!(["OWNER", "ADMIN"] as string[]).includes(result.access.membership.role))
     return NextResponse.json({ error: "只有擁有者或管理員能修改設定" }, { status: 403 });
   const input = settingsSchema.safeParse(await request.json().catch(() => null));
-  if (!input.success)
+  if (!input.success) {
+    const fieldErrors = schemaFieldErrors(input.error.issues);
     return NextResponse.json(
-      { error: input.error.issues[0]?.message || "設定格式不正確" },
+      {
+        error: input.error.issues[0]?.message || "設定格式不正確",
+        ...(Object.keys(fieldErrors).length ? { fieldErrors } : {}),
+      },
       { status: 400 },
     );
+  }
   try {
     const [current, account] = await Promise.all([
       readWorkspaceSettings(result.access.project.workspaceId),
@@ -145,24 +178,48 @@ export async function PATCH(
         : current.integrations,
     };
     if (next.ai.enabled) {
-      if (
-        !next.ai.baseUrl ||
-        !next.ai.model ||
-        (next.ai.provider === "OPENAI_COMPATIBLE" && !next.ai.apiKey)
-      )
+      const fieldErrors: Record<string, string> = {};
+      if (!next.ai.baseUrl) fieldErrors.aiBaseUrl = "啟用 AI 前請填入服務網址。";
+      if (!next.ai.model) fieldErrors.aiModel = "啟用 AI 前請填入模型名稱。";
+      if (next.ai.provider === "OPENAI_COMPATIBLE" && !next.ai.apiKey)
+        fieldErrors.aiApiKey = "啟用此服務前請填入 API 金鑰。";
+      if (Object.keys(fieldErrors).length)
         return NextResponse.json(
-          { error: "啟用 AI 前必須填入服務網址、模型與必要 API 金鑰" },
+          { error: "啟用 AI 前必須填入必要設定", fieldErrors },
           { status: 422 },
         );
-      await validateExternalUrl(next.ai.baseUrl, "AI", next.ai.provider);
+      try {
+        await validateExternalUrl(next.ai.baseUrl, "AI", next.ai.provider);
+      } catch {
+        return NextResponse.json(
+          {
+            error: "AI 服務網址無法使用，請確認網址與連線限制。",
+            fieldErrors: { aiBaseUrl: "請使用可連線的允許網址。" },
+          },
+          { status: 422 },
+        );
+      }
     }
     if (next.integrations.webhookEnabled) {
       if (!next.integrations.webhookUrl)
         return NextResponse.json(
-          { error: "啟用 Webhook 前必須填入 HTTPS 網址" },
+          {
+            error: "啟用 Webhook 前必須填入 HTTPS 網址",
+            fieldErrors: { webhookUrl: "啟用 Webhook 前請填入 HTTPS 網址。" },
+          },
           { status: 422 },
         );
-      await validateExternalUrl(next.integrations.webhookUrl, "WEBHOOK");
+      try {
+        await validateExternalUrl(next.integrations.webhookUrl, "WEBHOOK");
+      } catch {
+        return NextResponse.json(
+          {
+            error: "Webhook 網址無法使用，請確認它是可連線的 HTTPS 網址。",
+            fieldErrors: { webhookUrl: "請使用可連線的 HTTPS 網址。" },
+          },
+          { status: 422 },
+        );
+      }
     }
     if (
       input.data.backupIntervalHours !== undefined ||
@@ -249,6 +306,9 @@ export async function PATCH(
             : message.includes("WORKSPACE_SETTINGS_ENCRYPTION_KEY")
               ? "儲存整合密鑰前，請在 .env 設定至少 32 字元的 WORKSPACE_SETTINGS_ENCRYPTION_KEY 或 AUTH_SECRET，然後重啟服務"
               : "無法儲存設定",
+        ...(code === "P2002"
+          ? { fieldErrors: { projectCode: "此專案代碼已被使用。" } }
+          : {}),
       },
       { status: code === "P2002" ? 409 : 500 },
     );

@@ -58,12 +58,20 @@ describe("工作空間設定與導覽介面", () => {
     expect(read("components/document-sync-blocks.tsx")).toContain("建立同步區塊");
   });
 
+  it("在協作不可用或唯讀時仍以伺服器內容初始化文件", () => {
+    const editor = read("components/collaborative-editor.tsx");
+
+    expect(editor).toContain("const seedServerDocument");
+    expect(editor).toContain("queueMicrotask(seedServerDocument)");
+    expect(editor).toContain("!current || !current.isEmpty");
+  });
+
   it("讓非同步結果以可讀屏通知的共用元件呈現", () => {
     const source = read("components/status-message.tsx");
     expect(source).toContain('role={tone === "alert" ? "alert" : "status"}');
     expect(source).toContain('aria-live={tone === "alert" ? "assertive" : "polite"}');
     expect(read("components/settings-panel.tsx")).toContain(
-      "<StatusMessage>{notice}</StatusMessage>",
+      "<StatusMessage tone={noticeTone}>{notice}</StatusMessage>",
     );
   });
 
@@ -86,5 +94,32 @@ describe("工作空間設定與導覽介面", () => {
   it("提供跳至主要內容連結與可聚焦的主要地標", () => {
     expect(read("app/layout.tsx")).toContain('href="#main-content"');
     expect(read("components/workspace-shell.tsx")).toContain('id="main-content"');
+  });
+
+  it("將工作空間檢視與文件排序替代操作保留在可分享的導覽中", () => {
+    const shell = read("components/workspace-shell.tsx");
+    expect(read("app/page.tsx")).toContain("database?: string");
+    expect(read("app/page.tsx")).toContain("taskView?: string");
+    expect(read("app/page.tsx")).toContain("panel?: string");
+    expect(shell).toContain(
+      '"document", "database", "module", "task", "taskView", "panel"',
+    );
+    expect(shell).toContain("router.push(href");
+    expect(shell).toContain("↑ 移到前一項之前");
+    expect(shell).toContain("↓ 移到下一項之後");
+    expect(shell).toContain("⇲ 移至其他頁面…");
+    expect(shell).toContain("移至專案根層");
+  });
+
+  it("在切換專案時以新的工作區資料重新掛載殼層", () => {
+    expect(read("app/page.tsx")).toContain("key={`${workspace.id}:${project.id}`}");
+  });
+
+  it("在深連結任務尚未載入時不保留先前任務的詳情", () => {
+    const tasks = read("components/project-module-board.tsx");
+
+    expect(tasks).toContain("const [selectedTaskLoading, setSelectedTaskLoading]");
+    expect(tasks).toContain("正在載入指定任務…");
+    expect(tasks).toContain("找不到指定任務或你沒有檢視權限。");
   });
 });

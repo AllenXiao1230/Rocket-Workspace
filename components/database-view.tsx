@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type UIEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { evaluateFormula } from "@/lib/formula";
 import { parseCsv, toCsv } from "@/lib/csv";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -136,6 +136,30 @@ type Filter = {
 };
 type FilterNode = Filter & { logic?: "AND" | "OR"; filters?: FilterNode[] };
 type Sort = { propertyId?: string; direction?: "asc" | "desc" };
+type ImportJob = {
+  databaseId: string;
+  id: string;
+  status: string;
+  totalRows: number;
+  processedRows: number;
+  createdRows: number;
+};
+type ImportJobProgress = {
+  status?: string;
+  processedRows?: number;
+  totalRows?: number;
+  createdRows?: number;
+  errorRows?: Array<{ message?: string }>;
+};
+type TableViewport = { scrollTop: number; height: number };
+type TableWindow = { start: number; end: number };
+const TABLE_VIRTUALIZATION_THRESHOLD = 50;
+const TABLE_ROW_HEIGHT = 42;
+const TABLE_HEADER_HEIGHT = 42;
+const MOBILE_TABLE_ROW_HEIGHT = 52;
+const TABLE_WINDOW_OVERSCAN = 8;
+const TABLE_INITIAL_VIEWPORT_HEIGHT = TABLE_HEADER_HEIGHT + TABLE_ROW_HEIGHT * 16;
+const IMPORT_POLL_INTERVAL = 1_000;
 const labels: Record<DatabasePropertyType, string> = {
   TEXT: "文字",
   NUMBER: "數字",
@@ -203,6 +227,36 @@ const isGroup = (
   filter: FilterNode,
 ): filter is FilterNode & { logic: "AND" | "OR"; filters: FilterNode[] } =>
   Array.isArray(filter.filters);
+
+const hasActiveFilter = (filter: FilterNode): boolean =>
+  isGroup(filter)
+    ? filter.filters.some((child) => hasActiveFilter(child))
+    : Boolean(filter.propertyId && filter.operator);
+
+function tableWindowFor(
+  rowCount: number,
+  { scrollTop, height }: TableViewport,
+  rowHeight = TABLE_ROW_HEIGHT,
+): TableWindow {
+  const headerHeight = rowHeight === TABLE_ROW_HEIGHT ? TABLE_HEADER_HEIGHT : rowHeight;
+  const bodyScrollTop = Math.max(0, scrollTop - headerHeight);
+  const bodyViewportHeight = Math.max(
+    rowHeight,
+    height - Math.max(0, headerHeight - scrollTop),
+  );
+  const start = Math.min(
+    rowCount,
+    Math.max(0, Math.floor(bodyScrollTop / rowHeight) - TABLE_WINDOW_OVERSCAN),
+  );
+  const end = Math.max(
+    start,
+    Math.min(
+      rowCount,
+      Math.ceil((bodyScrollTop + bodyViewportHeight) / rowHeight) + TABLE_WINDOW_OVERSCAN,
+    ),
+  );
+  return { start, end };
+}
 
 function calculatedValue(
   row: DatabaseRow,
@@ -506,18 +560,44 @@ export function DatabaseTable({
   const [formulaErrorsState, setFormulaErrorsState] = useState<
     "idle" | "loading" | "error"
   >("idle");
-  const [importJob, setImportJob] = useState<{
-    id: string;
-    status: string;
-    totalRows: number;
-    processedRows: number;
-    createdRows: number;
-  } | null>(null);
+  const [importJob, setImportJob] = useState<ImportJob | null>(null);
+  const [tableViewport, setTableViewport] = useState<TableViewport>({
+    scrollTop: 0,
+    height: TABLE_INITIAL_VIEWPORT_HEIGHT,
+  });
+  const [tableRowHeight, setTableRowHeight] = useState(TABLE_ROW_HEIGHT);
+  const [focusedRowId, setFocusedRowId] = useState<string | null>(null);
   const importRef = useRef<HTMLInputElement>(null);
+  const tableWrapRef = useRef<HTMLDivElement>(null);
+  const tableScrollFrameRef = useRef<number | null>(null);
+  const importRefreshControllerRef = useRef<AbortController | null>(null);
+  const importJobRef = useRef<ImportJob | null>(null);
   const databaseRef = useRef(database);
   const onChangeRef = useRef(onChange);
   databaseRef.current = database;
   onChangeRef.current = onChange;
+  importJobRef.current = importJob;
+  useEffect(() => {
+    setImportJob((current) => (current?.databaseId === database.id ? current : null));
+    return () => {
+      importRefreshControllerRef.current?.abort();
+    };
+  }, [database.id]);
+  useEffect(
+    () => () => {
+      if (tableScrollFrameRef.current !== null)
+        window.cancelAnimationFrame(tableScrollFrameRef.current);
+    },
+    [],
+  );
+  useEffect(() => {
+    const media = window.matchMedia("(max-width: 700px)");
+    const syncTableRowHeight = () =>
+      setTableRowHeight(media.matches ? MOBILE_TABLE_ROW_HEIGHT : TABLE_ROW_HEIGHT);
+    syncTableRowHeight();
+    media.addEventListener("change", syncTableRowHeight);
+    return () => media.removeEventListener("change", syncTableRowHeight);
+  }, []);
   useEffect(() => {
     setActiveId(database.views[0]?.id || "");
   }, [database.views]);
@@ -559,15 +639,21 @@ export function DatabaseTable({
       cancelled = true;
     };
   }, [database.id]);
+  const activeRowSorts = useMemo(
+    () =>
+      [sort, ...sorts].filter((item): item is Required<Sort> =>
+        Boolean(item.propertyId && item.direction),
+      ),
+    [sort, sorts],
+  );
+  const isManualRowOrderAvailable =
+    !hasActiveFilter(filter) && activeRowSorts.length === 0;
   const rows = useMemo(
     () =>
       [...database.rows]
         .filter((row) => matchesFilter(row, filter, database, allDatabases))
         .sort((a, b) => {
-          const activeSorts = [sort, ...sorts].filter(
-            (item) => item.propertyId && item.direction,
-          );
-          for (const item of activeSorts) {
+          for (const item of activeRowSorts) {
             const property = database.properties.find(
               (candidate) => candidate.id === item.propertyId,
             );
@@ -587,8 +673,76 @@ export function DatabaseTable({
           }
           return a.position - b.position;
         }),
-    [database, allDatabases, filter, sort, sorts],
+    [database, allDatabases, filter, activeRowSorts],
   );
+  const isVirtualizedTable =
+    activeView?.layout === "TABLE" && rows.length > TABLE_VIRTUALIZATION_THRESHOLD;
+  const activeImportJob = importJob?.databaseId === database.id ? importJob : null;
+  const importJobId = importJob?.id;
+  const importJobDatabaseId = importJob?.databaseId;
+  const importJobStatus = importJob?.status;
+  const updateTableViewport = useCallback((element: HTMLDivElement) => {
+    const next = { scrollTop: element.scrollTop, height: element.clientHeight };
+    setTableViewport((current) =>
+      current.scrollTop === next.scrollTop && current.height === next.height
+        ? current
+        : next,
+    );
+  }, []);
+  useEffect(() => {
+    setFocusedRowId(null);
+    if (tableScrollFrameRef.current !== null) {
+      window.cancelAnimationFrame(tableScrollFrameRef.current);
+      tableScrollFrameRef.current = null;
+    }
+    const element = tableWrapRef.current;
+    if (!element) return;
+    element.scrollTop = 0;
+    updateTableViewport(element);
+  }, [activeView?.id, database.id, updateTableViewport]);
+  useEffect(() => {
+    if (!isVirtualizedTable) {
+      setFocusedRowId(null);
+      return;
+    }
+    const element = tableWrapRef.current;
+    if (element) updateTableViewport(element);
+  }, [isVirtualizedTable, rows.length, updateTableViewport]);
+  useEffect(() => {
+    if (!isVirtualizedTable) return;
+    const element = tableWrapRef.current;
+    if (!element || typeof ResizeObserver === "undefined") return;
+    const observer = new ResizeObserver(() => updateTableViewport(element));
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [activeView?.id, database.id, isVirtualizedTable, updateTableViewport]);
+  const tableWindow = useMemo(
+    () =>
+      isVirtualizedTable
+        ? tableWindowFor(rows.length, tableViewport, tableRowHeight)
+        : { start: 0, end: rows.length },
+    [isVirtualizedTable, rows.length, tableRowHeight, tableViewport],
+  );
+  const tableRowIndexes = useMemo(() => {
+    if (!isVirtualizedTable) return rows.map((_, index) => index);
+    const indexes = new Set<number>();
+    for (let index = tableWindow.start; index < tableWindow.end; index += 1)
+      indexes.add(index);
+    for (const rowId of [focusedRowId, draggedRowId]) {
+      if (!rowId) continue;
+      const index = rows.findIndex((row) => row.id === rowId);
+      if (index >= 0) indexes.add(index);
+    }
+    return [...indexes].sort((left, right) => left - right);
+  }, [draggedRowId, focusedRowId, isVirtualizedTable, rows, tableWindow]);
+  function handleTableScroll(event: UIEvent<HTMLDivElement>) {
+    if (!isVirtualizedTable || tableScrollFrameRef.current !== null) return;
+    const element = event.currentTarget;
+    tableScrollFrameRef.current = window.requestAnimationFrame(() => {
+      tableScrollFrameRef.current = null;
+      updateTableViewport(element);
+    });
+  }
   const save = async (path: string, body: unknown) => {
     const response = await fetch(path, {
       method: "POST",
@@ -705,40 +859,137 @@ export function DatabaseTable({
     URL.revokeObjectURL(href);
     setNotice(`已匯出 ${source.length} 列 CSV`);
   }
-  async function refreshImportedRows() {
-    const response = await fetch(`/api/databases/${database.id}/rows?take=100`, {
-      cache: "no-store",
-    });
-    if (!response.ok) return;
-    const result = (await response.json()) as {
-      rows: DatabaseRow[];
-      nextCursor: string | null;
+  const refreshImportedRows = useCallback(
+    async (expectedDatabaseId = database.id) => {
+      importRefreshControllerRef.current?.abort();
+      const controller = new AbortController();
+      importRefreshControllerRef.current = controller;
+      try {
+        const response = await fetch(
+          `/api/databases/${expectedDatabaseId}/rows?take=100`,
+          { cache: "no-store", signal: controller.signal },
+        );
+        if (!response.ok || controller.signal.aborted) return;
+        const result = (await response.json()) as {
+          rows: DatabaseRow[];
+          nextCursor: string | null;
+        };
+        if (controller.signal.aborted || databaseRef.current.id !== expectedDatabaseId)
+          return;
+        onChangeRef.current({ ...databaseRef.current, rows: result.rows });
+        setNextRowCursor(result.nextCursor);
+      } catch {
+        // A polling cleanup aborts this refresh when the database changes or unmounts.
+      } finally {
+        if (importRefreshControllerRef.current === controller)
+          importRefreshControllerRef.current = null;
+      }
+    },
+    [database.id],
+  );
+  useEffect(() => {
+    if (
+      !importJobId ||
+      importJobDatabaseId !== database.id ||
+      !["PENDING", "RUNNING"].includes(importJobStatus || "")
+    )
+      return;
+    let active = true;
+    const controller = new AbortController();
+    let pollTimer: number | null = null;
+    const databaseId = database.id;
+    const poll = async () => {
+      try {
+        const response = await fetch(
+          `/api/databases/${databaseId}/rows/import?jobId=${encodeURIComponent(importJobId)}`,
+          { cache: "no-store", signal: controller.signal },
+        );
+        if (!response.ok) throw new Error("無法讀取匯入進度");
+        const job = (await response.json()) as ImportJobProgress;
+        if (!active || databaseRef.current.id !== databaseId) return;
+        if (!job.status) throw new Error("無法讀取匯入進度");
+        const currentImportJob = importJobRef.current;
+        if (
+          !currentImportJob ||
+          currentImportJob.id !== importJobId ||
+          currentImportJob.databaseId !== databaseId
+        )
+          return;
+        const nextTotalRows = job.totalRows ?? currentImportJob.totalRows;
+        const nextCreatedRows = job.createdRows ?? currentImportJob.createdRows;
+        setImportJob((current) => {
+          if (!current || current.id !== importJobId || current.databaseId !== databaseId)
+            return current;
+          const nextJob = {
+            ...current,
+            status: job.status!,
+            totalRows: job.totalRows ?? current.totalRows,
+            processedRows: job.processedRows ?? current.processedRows,
+            createdRows: job.createdRows ?? current.createdRows,
+          };
+          return current.status === nextJob.status &&
+            current.totalRows === nextJob.totalRows &&
+            current.processedRows === nextJob.processedRows &&
+            current.createdRows === nextJob.createdRows
+            ? current
+            : nextJob;
+        });
+        if (job.status === "PENDING" || job.status === "RUNNING") {
+          pollTimer = window.setTimeout(poll, IMPORT_POLL_INTERVAL);
+          return;
+        }
+        if (job.status === "COMPLETED") {
+          void refreshImportedRows(databaseId);
+          setNotice(`已匯入 ${nextTotalRows} 列（含自動化共 ${nextCreatedRows} 列）。`);
+          return;
+        }
+        setNotice(job.errorRows?.[0]?.message || "CSV 匯入失敗，可下載錯誤報表。");
+      } catch {
+        if (!active || controller.signal.aborted || databaseRef.current.id !== databaseId)
+          return;
+        setNotice("暫時無法讀取匯入進度，將繼續嘗試…");
+        pollTimer = window.setTimeout(poll, IMPORT_POLL_INTERVAL);
+      }
     };
-    onChange({ ...database, rows: result.rows });
-    setNextRowCursor(result.nextCursor);
-  }
+    void poll();
+    return () => {
+      active = false;
+      controller.abort();
+      if (pollTimer !== null) window.clearTimeout(pollTimer);
+    };
+  }, [
+    database.id,
+    importJobDatabaseId,
+    importJobId,
+    importJobStatus,
+    refreshImportedRows,
+  ]);
   async function rollbackImport() {
-    if (!importJob) return;
+    if (!activeImportJob) return;
     const response = await fetch(`/api/databases/${database.id}/rows/import`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jobId: importJob.id }),
+      body: JSON.stringify({ jobId: activeImportJob.id }),
     });
     const result = (await response.json()) as {
       rolledBackRows?: number;
       error?: string;
     };
     if (!response.ok) return setNotice(result.error || "無法回復匯入");
-    setImportJob({ ...importJob, status: "ROLLED_BACK" });
-    await refreshImportedRows();
+    setImportJob((current) =>
+      current?.id === activeImportJob.id && current.databaseId === database.id
+        ? { ...current, status: "ROLLED_BACK" }
+        : current,
+    );
+    await refreshImportedRows(database.id);
     setNotice(`已回復 ${result.rolledBackRows || 0} 列匯入資料`);
   }
   async function retryImport() {
-    if (!importJob) return;
+    if (!activeImportJob) return;
     const response = await fetch(`/api/databases/${database.id}/rows/import`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ jobId: importJob.id, action: "retry" }),
+      body: JSON.stringify({ jobId: activeImportJob.id, action: "retry" }),
     });
     const result = (await response.json()) as {
       id?: string;
@@ -750,57 +1001,15 @@ export function DatabaseTable({
     };
     if (!response.ok || !result.id) return setNotice(result.error || "無法重新嘗試匯入");
     const pendingJob = {
+      databaseId: database.id,
       id: result.id,
       status: result.status || "PENDING",
-      totalRows: result.totalRows || importJob.totalRows,
-      processedRows: result.processedRows || 0,
-      createdRows: result.createdRows || 0,
+      totalRows: result.totalRows ?? activeImportJob.totalRows,
+      processedRows: result.processedRows ?? 0,
+      createdRows: result.createdRows ?? 0,
     };
     setImportJob(pendingJob);
     setNotice(`已重新排入 ${pendingJob.totalRows} 列匯入，正在背景處理…`);
-    const poll = window.setInterval(
-      () =>
-        void fetch(
-          `/api/databases/${database.id}/rows/import?jobId=${encodeURIComponent(pendingJob.id)}`,
-          { cache: "no-store" },
-        )
-          .then(async (reply) => (reply.ok ? reply.json() : null))
-          .then(
-            (
-              job: {
-                status?: string;
-                processedRows?: number;
-                totalRows?: number;
-                createdRows?: number;
-                errorRows?: Array<{ message?: string }>;
-              } | null,
-            ) => {
-              if (!job?.status) {
-                window.clearInterval(poll);
-                return setNotice("無法讀取匯入進度");
-              }
-              const nextJob = {
-                ...pendingJob,
-                status: job.status,
-                totalRows: job.totalRows || pendingJob.totalRows,
-                processedRows: job.processedRows || 0,
-                createdRows: job.createdRows || 0,
-              };
-              setImportJob(nextJob);
-              if (job.status === "RUNNING" || job.status === "PENDING")
-                return setNotice(`匯入中：${nextJob.processedRows}/${nextJob.totalRows}`);
-              window.clearInterval(poll);
-              if (job.status === "COMPLETED") {
-                void refreshImportedRows();
-                return setNotice(
-                  `已匯入 ${nextJob.totalRows} 列（含自動化共 ${nextJob.createdRows} 列）。`,
-                );
-              }
-              setNotice(job.errorRows?.[0]?.message || "CSV 匯入失敗，可下載錯誤報表。");
-            },
-          ),
-      1_000,
-    );
   }
   async function importCsv(file: File) {
     try {
@@ -847,62 +1056,15 @@ export function DatabaseTable({
       };
       if (!response.ok || !result.id) throw new Error(result.error || "資料不正確");
       const pendingJob = {
+        databaseId: database.id,
         id: result.id,
         status: "PENDING",
-        totalRows: result.totalRows || 0,
+        totalRows: result.totalRows ?? 0,
         processedRows: 0,
         createdRows: 0,
       };
       setImportJob(pendingJob);
       setNotice(`已排入 ${pendingJob.totalRows} 列匯入，正在背景處理…`);
-      const poll = window.setInterval(
-        () =>
-          void fetch(
-            `/api/databases/${database.id}/rows/import?jobId=${encodeURIComponent(result.id!)}`,
-            { cache: "no-store" },
-          )
-            .then(async (reply) => (reply.ok ? reply.json() : null))
-            .then(
-              (
-                job: {
-                  id?: string;
-                  status?: string;
-                  processedRows?: number;
-                  totalRows?: number;
-                  createdRows?: number;
-                  errorRows?: Array<{ message?: string }>;
-                } | null,
-              ) => {
-                if (!job?.status) {
-                  window.clearInterval(poll);
-                  return setNotice("無法讀取匯入進度");
-                }
-                const nextJob = {
-                  id: result.id!,
-                  status: job.status,
-                  totalRows: job.totalRows || pendingJob.totalRows,
-                  processedRows: job.processedRows || 0,
-                  createdRows: job.createdRows || 0,
-                };
-                setImportJob(nextJob);
-                if (job.status === "RUNNING" || job.status === "PENDING")
-                  return setNotice(
-                    `匯入中：${nextJob.processedRows}/${nextJob.totalRows}`,
-                  );
-                window.clearInterval(poll);
-                if (job.status === "COMPLETED") {
-                  void refreshImportedRows();
-                  return setNotice(
-                    `已匯入 ${nextJob.totalRows} 列（含自動化共 ${nextJob.createdRows} 列）。`,
-                  );
-                }
-                setNotice(
-                  job.errorRows?.[0]?.message || "CSV 匯入失敗，可下載錯誤報表。",
-                );
-              },
-            ),
-        1_000,
-      );
     } catch (error) {
       setNotice(error instanceof Error ? error.message : "CSV 匯入失敗");
     } finally {
@@ -1062,6 +1224,21 @@ export function DatabaseTable({
     } catch {
       setNotice("排序未儲存，請重新整理後再試");
     }
+  }
+  function moveRelative(
+    kind: "properties" | "rows",
+    sourceId: string,
+    direction: -1 | 1,
+  ) {
+    if (kind === "rows" && !isManualRowOrderAvailable) {
+      setNotice("請先清除篩選與排序，再調整資料列的固定順序。");
+      return;
+    }
+    const source = kind === "properties" ? database.properties : database.rows;
+    const sourceIndex = source.findIndex((item) => item.id === sourceId);
+    const target = source[sourceIndex + direction];
+    if (!target) return;
+    void reorder(kind, sourceId, target.id);
   }
   async function removeTemplate(template: DatabaseTemplate) {
     try {
@@ -1346,6 +1523,12 @@ export function DatabaseTable({
   function cell(row: DatabaseRow, property: DatabaseProperty) {
     const value = row.values[property.id];
     const config = objectOptions(property);
+    const primaryProperty = database.properties[0];
+    const primaryValue = text(row.values[primaryProperty?.id || ""]).trim();
+    const rowLabel = primaryValue
+      ? `「${primaryProperty?.name || "名稱"}」為「${primaryValue}」的資料列`
+      : `第 ${row.position + 1} 列`;
+    const cellLabel = `${rowLabel}的「${property.name}」欄位`;
     const update = (next: unknown) => {
       if (editable) void saveRow(row, { ...row.values, [property.id]: next });
     };
@@ -1365,6 +1548,7 @@ export function DatabaseTable({
       return (
         <select
           className="db-cell-select"
+          aria-label={cellLabel}
           disabled={!editable}
           multiple
           value={selected}
@@ -1389,6 +1573,7 @@ export function DatabaseTable({
       return (
         <input
           className="db-cell-input"
+          aria-label={cellLabel}
           disabled={!editable}
           defaultValue={stringArray(value).join(", ")}
           placeholder="附件 ID，以逗號分隔"
@@ -1406,6 +1591,7 @@ export function DatabaseTable({
       return (
         <input
           className="db-checkbox"
+          aria-label={cellLabel}
           disabled={!editable}
           type="checkbox"
           checked={Boolean(value)}
@@ -1416,6 +1602,7 @@ export function DatabaseTable({
       return (
         <select
           className="db-cell-select"
+          aria-label={cellLabel}
           disabled={!editable}
           value={text(value)}
           onChange={(event) => update(event.target.value)}
@@ -1430,6 +1617,7 @@ export function DatabaseTable({
       return (
         <select
           className="db-cell-select"
+          aria-label={cellLabel}
           disabled={!editable}
           multiple
           value={Array.isArray(value) ? value.map(String) : []}
@@ -1461,6 +1649,7 @@ export function DatabaseTable({
     return (
       <input
         className="db-cell-input"
+        aria-label={cellLabel}
         disabled={!editable}
         type={type}
         maxLength={typeof config.maxLength === "number" ? config.maxLength : undefined}
@@ -1481,6 +1670,73 @@ export function DatabaseTable({
           )
         }
       />
+    );
+  }
+  function renderTableSpacer(key: string, rowCount: number) {
+    if (!rowCount) return null;
+    return (
+      <tr key={key} aria-hidden="true" className="database-table-spacer">
+        <td
+          colSpan={database.properties.length + 1}
+          style={{ height: rowCount * tableRowHeight }}
+        />
+      </tr>
+    );
+  }
+  function renderTableRow(row: DatabaseRow, rowIndex: number) {
+    return (
+      <tr
+        key={row.id}
+        data-database-row-id={row.id}
+        aria-rowindex={isVirtualizedTable ? rowIndex + 2 : undefined}
+        draggable={editable && isManualRowOrderAvailable}
+        onDragStart={() => setDraggedRowId(row.id)}
+        onDragEnd={() => setDraggedRowId(null)}
+        onDragOver={(event) =>
+          editable && isManualRowOrderAvailable && event.preventDefault()
+        }
+        onDrop={() => {
+          if (isManualRowOrderAvailable && draggedRowId)
+            void reorder("rows", draggedRowId, row.id);
+          setDraggedRowId(null);
+        }}
+      >
+        {database.properties.map((property) => (
+          <td key={property.id}>{cell(row, property)}</td>
+        ))}
+        <td>
+          {editable && (
+            <div className="db-row-actions">
+              <button
+                className="db-order-button"
+                type="button"
+                aria-label={`將第 ${rowIndex + 1} 列上移`}
+                disabled={!isManualRowOrderAvailable || rowIndex === 0}
+                onClick={() => moveRelative("rows", row.id, -1)}
+              >
+                ↑
+              </button>
+              <button
+                className="db-order-button"
+                type="button"
+                aria-label={`將第 ${rowIndex + 1} 列下移`}
+                disabled={!isManualRowOrderAvailable || rowIndex === rows.length - 1}
+                onClick={() => moveRelative("rows", row.id, 1)}
+              >
+                ↓
+              </button>
+              <button
+                className="db-delete-small"
+                aria-label={`刪除第 ${rowIndex + 1} 列`}
+                onClick={() => setPendingAction({ kind: "row", row })}
+                title="刪除列"
+              >
+                ×
+              </button>
+            </div>
+          )}
+        </td>
+      </tr>
     );
   }
   const grouping =
@@ -1666,96 +1922,154 @@ export function DatabaseTable({
         ))}
       </div>
     ) : (
-      <div className="database-table-wrap">
-        <table className="database-table">
-          <thead>
-            <tr>
-              {database.properties.map((property) => (
-                <th
-                  key={property.id}
-                  draggable={editable}
-                  onDragStart={() => setDraggedPropertyId(property.id)}
-                  onDragOver={(event) => editable && event.preventDefault()}
-                  onDrop={() => {
-                    if (draggedPropertyId)
-                      void reorder("properties", draggedPropertyId, property.id);
-                    setDraggedPropertyId(null);
-                  }}
-                >
-                  <span>
-                    {property.type === "STATUS"
-                      ? "◉"
-                      : property.type === "DATE"
-                        ? "◷"
-                        : property.type === "RELATION"
-                          ? "↗"
-                          : property.type === "FORMULA"
-                            ? "ƒ"
-                            : "Aa"}
-                  </span>
-                  {property.name}
-                  {editable && (
-                    <button
-                      className="db-delete-small"
-                      onClick={() => setPendingAction({ kind: "property", property })}
-                      title={`刪除 ${property.name}`}
-                    >
-                      ×
-                    </button>
-                  )}
-                </th>
-              ))}
-              <th>
-                <button
-                  className="add-property"
-                  disabled={!editable}
-                  onClick={() => setShowColumnComposer(true)}
-                  title="新增欄位"
-                >
-                  ＋ 欄位
-                </button>
-              </th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((row) => (
-              <tr
-                key={row.id}
-                draggable={editable}
-                onDragStart={() => setDraggedRowId(row.id)}
-                onDragOver={(event) => editable && event.preventDefault()}
-                onDrop={() => {
-                  if (draggedRowId) void reorder("rows", draggedRowId, row.id);
-                  setDraggedRowId(null);
-                }}
-              >
-                {database.properties.map((property) => (
-                  <td key={property.id}>{cell(row, property)}</td>
-                ))}
-                <td>
-                  {editable && (
-                    <button
-                      className="db-delete-small"
-                      onClick={() => setPendingAction({ kind: "row", row })}
-                      title="刪除列"
-                    >
-                      ×
-                    </button>
-                  )}
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-        {!rows.length && (
-          <button
-            className="database-empty"
-            disabled={!editable}
-            onClick={() => void addRow()}
-          >
-            ＋ 新增第一列
-          </button>
+      <div className="database-table-shell">
+        {editable && !isManualRowOrderAvailable && (
+          <p className="database-order-notice" role="status">
+            目前檢視已套用篩選或排序；清除條件後即可調整資料列的固定順序。
+          </p>
         )}
+        {isVirtualizedTable && (
+          <p className="database-table-range" id="database-table-range">
+            顯示第 {tableWindow.start + 1} 至 {tableWindow.end} 列，共 {rows.length} 列
+          </p>
+        )}
+        <div
+          ref={tableWrapRef}
+          aria-label={isVirtualizedTable ? `${database.name} 資料表` : undefined}
+          className={
+            isVirtualizedTable
+              ? "database-table-wrap database-table-wrap-virtualized"
+              : "database-table-wrap"
+          }
+          onScroll={handleTableScroll}
+          tabIndex={isVirtualizedTable ? 0 : undefined}
+          onDragOver={(event) => {
+            if (!isVirtualizedTable || !draggedRowId) return;
+            event.preventDefault();
+            const edgeSize = 48;
+            const scrollStep = 24;
+            const bounds = event.currentTarget.getBoundingClientRect();
+            if (event.clientY < bounds.top + edgeSize)
+              event.currentTarget.scrollTop -= scrollStep;
+            else if (event.clientY > bounds.bottom - edgeSize)
+              event.currentTarget.scrollTop += scrollStep;
+          }}
+        >
+          <table
+            aria-describedby={isVirtualizedTable ? "database-table-range" : undefined}
+            aria-rowcount={isVirtualizedTable ? rows.length + 1 : undefined}
+            className={
+              isVirtualizedTable
+                ? "database-table database-table-virtualized"
+                : "database-table"
+            }
+          >
+            <thead>
+              <tr>
+                {database.properties.map((property, propertyIndex) => (
+                  <th
+                    key={property.id}
+                    draggable={editable}
+                    onDragStart={() => setDraggedPropertyId(property.id)}
+                    onDragOver={(event) => editable && event.preventDefault()}
+                    onDrop={() => {
+                      if (draggedPropertyId)
+                        void reorder("properties", draggedPropertyId, property.id);
+                      setDraggedPropertyId(null);
+                    }}
+                  >
+                    <span>
+                      {property.type === "STATUS"
+                        ? "◉"
+                        : property.type === "DATE"
+                          ? "◷"
+                          : property.type === "RELATION"
+                            ? "↗"
+                            : property.type === "FORMULA"
+                              ? "ƒ"
+                              : "Aa"}
+                    </span>
+                    {property.name}
+                    {editable && (
+                      <span className="db-column-actions">
+                        <button
+                          className="db-order-button"
+                          type="button"
+                          aria-label={`將欄位 ${property.name} 向左移`}
+                          disabled={propertyIndex === 0}
+                          onClick={() => moveRelative("properties", property.id, -1)}
+                        >
+                          ←
+                        </button>
+                        <button
+                          className="db-order-button"
+                          type="button"
+                          aria-label={`將欄位 ${property.name} 向右移`}
+                          disabled={propertyIndex === database.properties.length - 1}
+                          onClick={() => moveRelative("properties", property.id, 1)}
+                        >
+                          →
+                        </button>
+                        <button
+                          className="db-delete-small"
+                          aria-label={`刪除欄位 ${property.name}`}
+                          onClick={() => setPendingAction({ kind: "property", property })}
+                          title={`刪除 ${property.name}`}
+                        >
+                          ×
+                        </button>
+                      </span>
+                    )}
+                  </th>
+                ))}
+                <th>
+                  <button
+                    className="add-property"
+                    disabled={!editable}
+                    onClick={() => setShowColumnComposer(true)}
+                    title="新增欄位"
+                  >
+                    ＋ 欄位
+                  </button>
+                </th>
+              </tr>
+            </thead>
+            <tbody
+              onFocusCapture={(event) => {
+                const target = event.target;
+                if (!(target instanceof HTMLElement)) return;
+                const row = target.closest<HTMLTableRowElement>("[data-database-row-id]");
+                if (row?.dataset.databaseRowId)
+                  setFocusedRowId(row.dataset.databaseRowId);
+              }}
+            >
+              {tableRowIndexes.flatMap((rowIndex, index) => {
+                const previousIndex = tableRowIndexes[index - 1] ?? -1;
+                return [
+                  renderTableSpacer(
+                    `spacer-before-${rowIndex}`,
+                    rowIndex - previousIndex - 1,
+                  ),
+                  renderTableRow(rows[rowIndex], rowIndex),
+                ];
+              })}
+              {isVirtualizedTable &&
+                renderTableSpacer(
+                  "spacer-after-window",
+                  rows.length - (tableRowIndexes.at(-1) ?? -1) - 1,
+                )}
+            </tbody>
+          </table>
+          {!rows.length && (
+            <button
+              className="database-empty"
+              disabled={!editable}
+              onClick={() => void addRow()}
+            >
+              ＋ 新增第一列
+            </button>
+          )}
+        </div>
       </div>
     );
   const writableAutomationProperties = database.properties.filter(
@@ -1990,6 +2304,7 @@ export function DatabaseTable({
             <button
               key={view.id}
               className={view.id === activeView?.id ? "view-tab active" : "view-tab"}
+              aria-pressed={view.id === activeView?.id}
               onClick={() => setActiveId(view.id)}
             >
               {view.layout === "BOARD" ? "▤" : view.layout === "CALENDAR" ? "◷" : "▦"}{" "}
@@ -2003,12 +2318,18 @@ export function DatabaseTable({
           )}
         </div>
         <div className="database-actions">
-          <button onClick={() => setControls(!controls)}>篩選與排序</button>
+          <button aria-pressed={controls} onClick={() => setControls(!controls)}>
+            篩選與排序
+          </button>
           <details className="database-action-overflow">
             <summary>更多操作</summary>
             <div>
               {database.properties.some((property) => property.type === "FORMULA") && (
-                <button className="button-secondary" onClick={toggleFormulaErrors}>
+                <button
+                  className="button-secondary"
+                  aria-pressed={showFormulaErrors}
+                  onClick={toggleFormulaErrors}
+                >
                   {showFormulaErrors ? "收合公式錯誤" : "公式錯誤紀錄"}
                 </button>
               )}
@@ -2017,6 +2338,7 @@ export function DatabaseTable({
                   <button onClick={() => setShowColumnComposer(true)}>＋ 新增欄位</button>
                   <button
                     className="button-secondary"
+                    aria-pressed={showPropertyTrash}
                     onClick={() => void togglePropertyTrash()}
                   >
                     ♻ 欄位回收桶
@@ -2645,16 +2967,16 @@ export function DatabaseTable({
           )}
         </div>
       }
-      {importJob && (
+      {activeImportJob && (
         <div className="db-import-status">
-          <span>
-            匯入狀態：{importJob.status}（{importJob.processedRows}/{importJob.totalRows}
-            ）
+          <span aria-atomic="true" aria-live="polite">
+            匯入狀態：{activeImportJob.status}（{activeImportJob.processedRows}/
+            {activeImportJob.totalRows}）
           </span>
-          {importJob.status === "FAILED" && (
+          {activeImportJob.status === "FAILED" && (
             <>
               <a
-                href={`/api/databases/${database.id}/rows/import?jobId=${encodeURIComponent(importJob.id)}&download=errors`}
+                href={`/api/databases/${database.id}/rows/import?jobId=${encodeURIComponent(activeImportJob.id)}&download=errors`}
               >
                 下載錯誤 CSV
               </a>
@@ -2665,7 +2987,7 @@ export function DatabaseTable({
               )}
             </>
           )}
-          {importJob.status === "COMPLETED" && editable && (
+          {activeImportJob.status === "COMPLETED" && editable && (
             <button
               type="button"
               onClick={() => setPendingAction({ kind: "rollback-import" })}
@@ -2682,6 +3004,7 @@ export function DatabaseTable({
           </button>
           <button
             className="button-secondary database-bottom-add"
+            aria-pressed={showRowTrash}
             onClick={() => void toggleRowTrash()}
           >
             ♻ 已刪除列

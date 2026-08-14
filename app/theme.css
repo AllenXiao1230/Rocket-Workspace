@@ -7,29 +7,40 @@
  */
 :root {
   --panel: var(--paper);
+  /* These foreground tokens deliberately stay neutral. The appearance picker
+   * controls the accents, while semantic foregrounds remain readable on every
+   * derived hover/selected surface. */
+  --accent-ink: #18221f;
+  --ink: #18221f;
+  --muted: #5f6b64;
+  --focus-ring: #18221f;
   --theme-input: var(--paper);
   --theme-input-hover: var(--surface-soft);
   --theme-sidebar: color-mix(in srgb, var(--theme-primary-deep) 18%, var(--void));
   --theme-sidebar-raised: color-mix(in srgb, var(--theme-primary-deep) 30%, var(--void));
-  --theme-on-sidebar: color-mix(in srgb, var(--theme-highlight) 44%, #ffffff);
-  --theme-sidebar-muted: color-mix(in srgb, var(--theme-primary) 28%, #abb3af);
-  --theme-danger: #d9574f;
+  --theme-on-sidebar: #f6f8f5;
+  --theme-sidebar-muted: #c6d0c8;
+  --theme-danger: #b83b35;
+  --theme-danger-hover: #96302c;
+  --theme-on-danger: #fffdfb;
   --theme-danger-soft: color-mix(in srgb, var(--theme-danger) 12%, var(--paper));
-  --theme-danger-border: color-mix(in srgb, var(--theme-danger) 42%, var(--line));
+  --theme-danger-border: color-mix(in srgb, var(--theme-danger) 80%, #601d1a);
 }
 
 html[data-theme="dark"] {
+  --accent-ink: #edf1ed;
+  --ink: #edf1ed;
+  --muted: #c6d0c8;
+  --focus-ring: #f6f8f5;
   --surface: color-mix(in srgb, var(--theme-primary-deep) 15%, #171a1b);
   --paper: color-mix(in srgb, var(--theme-primary-deep) 20%, #111415);
   --line: color-mix(in srgb, var(--theme-primary) 28%, #303638);
-  --ink: color-mix(in srgb, var(--theme-highlight) 28%, #edf1ed);
-  --muted: color-mix(in srgb, var(--theme-primary) 31%, #aab5b0);
   --theme-input: color-mix(in srgb, var(--theme-primary-deep) 24%, #0f1213);
   --theme-input-hover: color-mix(in srgb, var(--theme-primary) 13%, var(--theme-input));
   --theme-sidebar: #101214;
   --theme-sidebar-raised: color-mix(in srgb, var(--theme-primary-deep) 29%, #101214);
-  --theme-on-sidebar: color-mix(in srgb, var(--theme-highlight) 52%, #f6f8f5);
-  --theme-sidebar-muted: color-mix(in srgb, var(--theme-primary) 35%, #a4afaa);
+  --theme-on-sidebar: #f6f8f5;
+  --theme-sidebar-muted: #c6d0c8;
 }
 
 /* Shell, navigation and shared controls. */
@@ -64,6 +75,39 @@ html[data-theme="dark"] {
 .sidebar .database-nav button.active {
   background: color-mix(in srgb, var(--theme-primary) 20%, transparent) !important;
   color: var(--theme-on-sidebar) !important;
+}
+.sidebar .tree button.active {
+  background: color-mix(
+    in srgb,
+    var(--theme-primary) 22%,
+    var(--theme-sidebar)
+  ) !important;
+  color: var(--theme-on-sidebar) !important;
+}
+.sidebar .tree button.active .tree-rail {
+  color: var(--theme-sidebar-muted) !important;
+}
+.sidebar .project-code {
+  color: var(--theme-on-sidebar) !important;
+}
+.sidebar
+  :is(
+    .create-document span,
+    .create-database span,
+    .tree-subpage:hover,
+    .tree-menu-trigger:hover,
+    .workspace-settings-link:hover,
+    .workspace-settings-link.active
+  ) {
+  color: var(--theme-on-sidebar) !important;
+}
+.skip-link,
+.login .primary {
+  color: #edf1ed !important;
+}
+.app .avatar {
+  background: var(--theme-primary-deep) !important;
+  color: var(--theme-highlight) !important;
 }
 
 /* Every visible frame shares the theme-derived line token.  Intentional
@@ -211,6 +255,7 @@ html[data-theme="dark"] {
     .document-collab > div:first-child button.active,
     .revision-list button:hover,
     .theme-options button:hover,
+    .theme-options button[aria-pressed="true"],
     .accent-presets button:hover,
     .accent-presets button.active,
     .slash-menu button:hover,
@@ -296,10 +341,13 @@ html[data-theme="dark"] {
 }
 .app :is(.gantt-bar, .gantt-bar.in_progress) {
   background: var(--theme-primary) !important;
-  color: var(--theme-primary-deep) !important;
+  color: var(--theme-on-primary) !important;
 }
 .app :is(.gantt-bar.blocked, .readiness-foot i, .workflow-state.changes_requested) {
   background: var(--theme-warning) !important;
+}
+.app :is(.gantt-bar.blocked, .workflow-state.changes_requested) {
+  color: var(--theme-on-warning) !important;
 }
 .app
   :is(
@@ -314,7 +362,7 @@ html[data-theme="dark"] {
   background-color: var(--theme-primary);
 }
 
-/* States deliberately retain semantic danger meaning, but still use a shared token. */
+/* Destructive controls retain a solid, contrast-safe semantic treatment. */
 .app
   :is(
     .dialog-danger,
@@ -327,7 +375,23 @@ html[data-theme="dark"] {
     .tree-context-menu button.danger,
     .editor-context-menu button.danger
   ) {
-  background: var(--theme-danger-soft) !important;
-  color: var(--theme-danger) !important;
+  background: var(--theme-danger) !important;
+  color: var(--theme-on-danger) !important;
   border-color: var(--theme-danger-border) !important;
+}
+.app
+  :is(
+    .dialog-danger,
+    .module-delete,
+    .database-danger,
+    .editor-danger,
+    .team-remove,
+    .attachment-remove,
+    .comment-actions button.danger,
+    .tree-context-menu button.danger,
+    .editor-context-menu button.danger
+  ):is(:hover, :focus-visible) {
+  background: var(--theme-danger-hover) !important;
+  color: var(--theme-on-danger) !important;
+  border-color: var(--theme-danger-hover) !important;
 }

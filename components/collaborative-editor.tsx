@@ -90,6 +90,11 @@ export function CollaborativeEditor({
   const [sourceMode, setSourceMode] = useState(false);
   const [sourceMarkdown, setSourceMarkdown] = useState(document.markdown || "");
   const [externalChanged, setExternalChanged] = useState(false);
+  const [advancedToolsOpen, setAdvancedToolsOpen] = useState(false);
+  const [advancedToolsPosition, setAdvancedToolsPosition] = useState<FloatingPosition>({
+    x: 120,
+    y: 180,
+  });
   const [iconPicker, setIconPicker] = useState(false);
   const [customIcon, setCustomIcon] = useState(document.icon || "📄");
   const [slashMenu, setSlashMenu] = useState(false);
@@ -113,6 +118,8 @@ export function CollaborativeEditor({
   const provider = useRef<WebsocketProvider | null>(null);
   const editorRef = useRef<ReturnType<typeof useEditor>>(null);
   const imageInputRef = useRef<HTMLInputElement>(null);
+  const advancedToolsTriggerRef = useRef<HTMLButtonElement>(null);
+  const advancedToolsMenuRef = useRef<HTMLDivElement>(null);
   const persist = useCallback(async () => {
     if (saving.current || !pending.current || !editable) return;
     const snapshot = pending.current;
@@ -368,6 +375,13 @@ export function CollaborativeEditor({
     setContextMenu(null);
     editor?.commands.focus();
   }, [editor]);
+  const closeAdvancedTools = useCallback((returnFocus = false) => {
+    setAdvancedToolsOpen(false);
+    if (returnFocus)
+      window.requestAnimationFrame(() =>
+        advancedToolsTriggerRef.current?.focus({ preventScroll: true }),
+      );
+  }, []);
   const iconPickerDialogRef = useDialogFocus<HTMLElement>(iconPicker, () =>
     setIconPicker(false),
   );
@@ -378,8 +392,46 @@ export function CollaborativeEditor({
   const { menuRef: editorContextMenuRef, onKeyDown: onEditorContextMenuKeyDown } =
     useMenuNavigation(Boolean(contextMenu), closeFloatingMenus);
   useEffect(() => {
+    if (!advancedToolsOpen) return;
+    const closeOnPointerDown = (event: PointerEvent) => {
+      const target = event.target as Node | null;
+      if (
+        target &&
+        !advancedToolsTriggerRef.current?.contains(target) &&
+        !advancedToolsMenuRef.current?.contains(target)
+      )
+        setAdvancedToolsOpen(false);
+    };
+    globalThis.document.addEventListener("pointerdown", closeOnPointerDown);
+    return () =>
+      globalThis.document.removeEventListener("pointerdown", closeOnPointerDown);
+  }, [advancedToolsOpen, advancedToolsMenuRef]);
+  useEffect(() => {
+    if (!advancedToolsOpen) return;
+    const frame = window.requestAnimationFrame(() =>
+      advancedToolsMenuRef.current
+        ?.querySelector<
+          HTMLButtonElement | HTMLAnchorElement
+        >("button:not([disabled]), a")
+        ?.focus({ preventScroll: true }),
+    );
+    return () => window.cancelAnimationFrame(frame);
+  }, [advancedToolsOpen]);
+  useEffect(() => {
     editorRef.current = editor;
   }, [editor]);
+  const seedServerDocument = useCallback(() => {
+    const current = editorRef.current;
+    // Do not replace a Yjs update which has already populated the editor. This
+    // is only the safe fallback for an empty local document when collaboration
+    // cannot be connected or is intentionally unavailable to this viewer.
+    if (!current || !current.isEmpty) return;
+    const source = document.markdown || document.content;
+    current.commands.setContent(
+      source,
+      document.markdown ? { contentType: "markdown" } : undefined,
+    );
+  }, [document.content, document.markdown]);
   useEffect(() => {
     let disposed = false;
     const check = async () => {
@@ -431,10 +483,12 @@ export function CollaborativeEditor({
         };
         if (cancelled) return;
         if (disabled) {
+          queueMicrotask(seedServerDocument);
           setStatus("管理者已停用即時協作；內容仍會儲存至伺服器。");
           return;
         }
         if (readOnly || !token) {
+          queueMicrotask(seedServerDocument);
           setStatus("檢視模式 · 權限保護的即時編輯已停用");
           return;
         }
@@ -461,27 +515,19 @@ export function CollaborativeEditor({
           );
         nextProvider.awareness.on("change", updatePresence);
         updatePresence();
-        const seedEmptyDocument = () => {
-          const current = editorRef.current;
-          if (!current || current.getText().trim()) return;
-          const source = document.markdown || document.content;
-          current.commands.setContent(
-            source,
-            document.markdown ? { contentType: "markdown" } : undefined,
-          );
-        };
         nextProvider.on("sync", (synced: boolean) => {
           if (!synced) return;
           // A websocket can briefly report "disconnected" while its initial
           // Yjs handshake is settling. A completed sync is the reliable
           // signal that this document is ready for collaboration.
           setStatus(editable ? "已連線 · 即時協作已啟用" : "檢視模式 · 即時內容已連線");
-          queueMicrotask(seedEmptyDocument);
+          queueMicrotask(seedServerDocument);
         });
         // A fast local connection can finish synchronising before the listener is
         // attached. Checking the current state makes the initial seed reliable.
-        if (nextProvider.synced) queueMicrotask(seedEmptyDocument);
+        if (nextProvider.synced) queueMicrotask(seedServerDocument);
       } catch {
+        queueMicrotask(seedServerDocument);
         setStatus(
           editable ? "協作服務不可用；仍會嘗試儲存內容。" : "檢視模式 · 協作服務不可用",
         );
@@ -504,6 +550,7 @@ export function CollaborativeEditor({
     document.markdown,
     editable,
     persist,
+    seedServerDocument,
     ydoc,
   ]);
   const updateTitle = useCallback(
@@ -648,10 +695,31 @@ export function CollaborativeEditor({
   const command = (run: () => boolean) => () => {
     if (editable) run();
   };
+  const advancedMenuAction = (run: () => void) => () => {
+    run();
+    closeAdvancedTools();
+  };
   const menuAction = (run: () => void) => () => {
     run();
     closeFloatingMenus();
   };
+  function toggleAdvancedTools() {
+    if (advancedToolsOpen) return closeAdvancedTools();
+    const trigger = advancedToolsTriggerRef.current;
+    if (!trigger) return;
+    const rect = trigger.getBoundingClientRect();
+    const menuWidth = Math.min(360, window.innerWidth - 16);
+    const menuHeight = Math.min(310, window.innerHeight - 18);
+    const below = rect.bottom + 8;
+    setAdvancedToolsPosition({
+      x: Math.max(8, Math.min(rect.left, window.innerWidth - menuWidth - 8)),
+      y:
+        below + menuHeight <= window.innerHeight - 8
+          ? below
+          : Math.max(8, rect.top - menuHeight - 8),
+    });
+    setAdvancedToolsOpen(true);
+  }
   function openSlashMenu() {
     if (!editor || !editable) return;
     const coords = editor.view.coordsAtPos(editor.state.selection.from);
@@ -804,6 +872,7 @@ export function CollaborativeEditor({
         </button>
         <button
           className={editor?.isActive("bold") ? "active" : ""}
+          aria-pressed={editor?.isActive("bold") ?? false}
           disabled={!editable}
           onClick={command(() => editor?.chain().focus().toggleBold().run() || false)}
           aria-label="粗體"
@@ -812,6 +881,7 @@ export function CollaborativeEditor({
         </button>
         <button
           className={editor?.isActive("italic") ? "active" : ""}
+          aria-pressed={editor?.isActive("italic") ?? false}
           disabled={!editable}
           onClick={command(() => editor?.chain().focus().toggleItalic().run() || false)}
           aria-label="斜體"
@@ -819,43 +889,8 @@ export function CollaborativeEditor({
           <i>I</i>
         </button>
         <button
-          className={editor?.isActive("underline") ? "active" : ""}
-          disabled={!editable}
-          onClick={command(
-            () => editor?.chain().focus().toggleUnderline().run() || false,
-          )}
-          aria-label="底線"
-        >
-          <u>U</u>
-        </button>
-        <button
-          className={editor?.isActive("strike") ? "active" : ""}
-          disabled={!editable}
-          onClick={command(() => editor?.chain().focus().toggleStrike().run() || false)}
-          aria-label="刪除線"
-        >
-          S
-        </button>
-        <button
-          disabled={!editable}
-          onClick={command(
-            () => editor?.chain().focus().unsetAllMarks().clearNodes().run() || false,
-          )}
-        >
-          清除格式
-        </button>
-        <span />
-        <button
-          className={editor?.isActive("heading", { level: 1 }) ? "active" : ""}
-          disabled={!editable}
-          onClick={command(
-            () => editor?.chain().focus().toggleHeading({ level: 1 }).run() || false,
-          )}
-        >
-          H1
-        </button>
-        <button
           className={editor?.isActive("heading", { level: 2 }) ? "active" : ""}
+          aria-pressed={editor?.isActive("heading", { level: 2 }) ?? false}
           disabled={!editable}
           onClick={command(
             () => editor?.chain().focus().toggleHeading({ level: 2 }).run() || false,
@@ -864,16 +899,8 @@ export function CollaborativeEditor({
           H2
         </button>
         <button
-          className={editor?.isActive("heading", { level: 3 }) ? "active" : ""}
-          disabled={!editable}
-          onClick={command(
-            () => editor?.chain().focus().toggleHeading({ level: 3 }).run() || false,
-          )}
-        >
-          H3
-        </button>
-        <button
           className={editor?.isActive("bulletList") ? "active" : ""}
+          aria-pressed={editor?.isActive("bulletList") ?? false}
           disabled={!editable}
           onClick={command(
             () => editor?.chain().focus().toggleBulletList().run() || false,
@@ -882,78 +909,12 @@ export function CollaborativeEditor({
           • 清單
         </button>
         <button
-          className={editor?.isActive("orderedList") ? "active" : ""}
-          disabled={!editable}
-          onClick={command(
-            () => editor?.chain().focus().toggleOrderedList().run() || false,
-          )}
-        >
-          1. 清單
-        </button>
-        <button
           className={editor?.isActive("taskList") ? "active" : ""}
+          aria-pressed={editor?.isActive("taskList") ?? false}
           disabled={!editable}
           onClick={command(() => editor?.chain().focus().toggleTaskList().run() || false)}
         >
           ☑ 待辦
-        </button>
-        <button
-          className={editor?.isActive("blockquote") ? "active" : ""}
-          disabled={!editable}
-          onClick={command(
-            () => editor?.chain().focus().toggleBlockquote().run() || false,
-          )}
-        >
-          ❝ 提示
-        </button>
-        <button
-          className={editor?.isActive("callout") ? "active" : ""}
-          disabled={!editable}
-          onClick={command(
-            () =>
-              editor?.chain().focus().wrapIn("callout", { tone: "info" }).run() || false,
-          )}
-        >
-          ⓘ Callout
-        </button>
-        <button disabled={!editable} onClick={openLocalImagePicker}>
-          ⇧ 上傳圖片
-        </button>
-        <button disabled={!editable} onClick={() => openInsertDialog("image")}>
-          ▧ 圖片網址
-        </button>
-        <button disabled={!editable} onClick={() => openInsertDialog("embed")}>
-          ▣ 嵌入
-        </button>
-        <button
-          className={editor?.isActive("codeBlock") ? "active" : ""}
-          disabled={!editable}
-          onClick={command(
-            () => editor?.chain().focus().toggleCodeBlock().run() || false,
-          )}
-        >
-          &lt;/&gt;
-        </button>
-        <button
-          disabled={!editable}
-          onClick={command(
-            () => editor?.chain().focus().setHorizontalRule().run() || false,
-          )}
-        >
-          — 分隔線
-        </button>
-        <button
-          disabled={!editable}
-          onClick={command(
-            () =>
-              editor
-                ?.chain()
-                .focus()
-                .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
-                .run() || false,
-          )}
-        >
-          ▦ 表格
         </button>
         <button
           className={editor?.isActive("link") ? "active" : ""}
@@ -977,19 +938,202 @@ export function CollaborativeEditor({
         >
           ↷
         </button>
-        <button onClick={openSource}>MD 原始碼</button>
-        <button onClick={() => void reloadFromFile()}>讀取檔案</button>
-        <button onClick={() => void copyMarkdown()}>複製 MD</button>
-        <a href={`/api/documents/${document.id}/markdown?download=1`}>下載 .md</a>
-        {editable && (
-          <>
-            <button onClick={() => onCreateSubpage?.(document.id)}>＋ 子頁面</button>
-            <button className="editor-danger" onClick={() => onDelete?.()}>
-              刪除頁面
-            </button>
-          </>
-        )}
+        <button
+          ref={advancedToolsTriggerRef}
+          type="button"
+          aria-controls="editor-advanced-tools"
+          aria-expanded={advancedToolsOpen}
+          onClick={toggleAdvancedTools}
+          onKeyDown={(event) => {
+            if (event.key === "Escape" && advancedToolsOpen) {
+              event.preventDefault();
+              closeAdvancedTools(true);
+            }
+          }}
+        >
+          更多工具
+        </button>
       </div>
+      {advancedToolsOpen && (
+        <div
+          ref={advancedToolsMenuRef}
+          id="editor-advanced-tools"
+          className="editor-context-menu floating-menu"
+          style={{ left: advancedToolsPosition.x, top: advancedToolsPosition.y }}
+          role="group"
+          aria-label="進階文件工具"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              closeAdvancedTools(true);
+            }
+          }}
+        >
+          <strong>進階格式與文件操作</strong>
+          <button
+            className={editor?.isActive("underline") ? "active" : ""}
+            aria-pressed={editor?.isActive("underline") ?? false}
+            disabled={!editable}
+            onClick={advancedMenuAction(
+              command(() => editor?.chain().focus().toggleUnderline().run() || false),
+            )}
+            aria-label="底線"
+          >
+            <u>U</u>
+          </button>
+          <button
+            className={editor?.isActive("strike") ? "active" : ""}
+            aria-pressed={editor?.isActive("strike") ?? false}
+            disabled={!editable}
+            onClick={advancedMenuAction(
+              command(() => editor?.chain().focus().toggleStrike().run() || false),
+            )}
+            aria-label="刪除線"
+          >
+            S
+          </button>
+          <button
+            disabled={!editable}
+            onClick={advancedMenuAction(
+              command(
+                () => editor?.chain().focus().unsetAllMarks().clearNodes().run() || false,
+              ),
+            )}
+          >
+            清除格式
+          </button>
+          <button
+            className={editor?.isActive("heading", { level: 1 }) ? "active" : ""}
+            aria-pressed={editor?.isActive("heading", { level: 1 }) ?? false}
+            disabled={!editable}
+            onClick={advancedMenuAction(
+              command(
+                () => editor?.chain().focus().toggleHeading({ level: 1 }).run() || false,
+              ),
+            )}
+          >
+            H1
+          </button>
+          <button
+            className={editor?.isActive("heading", { level: 3 }) ? "active" : ""}
+            aria-pressed={editor?.isActive("heading", { level: 3 }) ?? false}
+            disabled={!editable}
+            onClick={advancedMenuAction(
+              command(
+                () => editor?.chain().focus().toggleHeading({ level: 3 }).run() || false,
+              ),
+            )}
+          >
+            H3
+          </button>
+          <button
+            className={editor?.isActive("orderedList") ? "active" : ""}
+            aria-pressed={editor?.isActive("orderedList") ?? false}
+            disabled={!editable}
+            onClick={advancedMenuAction(
+              command(() => editor?.chain().focus().toggleOrderedList().run() || false),
+            )}
+          >
+            1. 清單
+          </button>
+          <button
+            className={editor?.isActive("blockquote") ? "active" : ""}
+            aria-pressed={editor?.isActive("blockquote") ?? false}
+            disabled={!editable}
+            onClick={advancedMenuAction(
+              command(() => editor?.chain().focus().toggleBlockquote().run() || false),
+            )}
+          >
+            ❝ 提示
+          </button>
+          <button
+            className={editor?.isActive("callout") ? "active" : ""}
+            aria-pressed={editor?.isActive("callout") ?? false}
+            disabled={!editable}
+            onClick={advancedMenuAction(
+              command(
+                () =>
+                  editor?.chain().focus().wrapIn("callout", { tone: "info" }).run() ||
+                  false,
+              ),
+            )}
+          >
+            ⓘ Callout
+          </button>
+          <button disabled={!editable} onClick={advancedMenuAction(openLocalImagePicker)}>
+            ⇧ 上傳圖片
+          </button>
+          <button
+            disabled={!editable}
+            onClick={advancedMenuAction(() => openInsertDialog("image"))}
+          >
+            ▧ 圖片網址
+          </button>
+          <button
+            disabled={!editable}
+            onClick={advancedMenuAction(() => openInsertDialog("embed"))}
+          >
+            ▣ 嵌入
+          </button>
+          <button
+            className={editor?.isActive("codeBlock") ? "active" : ""}
+            aria-pressed={editor?.isActive("codeBlock") ?? false}
+            disabled={!editable}
+            onClick={advancedMenuAction(
+              command(() => editor?.chain().focus().toggleCodeBlock().run() || false),
+            )}
+          >
+            &lt;/&gt;
+          </button>
+          <button
+            disabled={!editable}
+            onClick={advancedMenuAction(
+              command(() => editor?.chain().focus().setHorizontalRule().run() || false),
+            )}
+          >
+            — 分隔線
+          </button>
+          <button
+            disabled={!editable}
+            onClick={advancedMenuAction(
+              command(
+                () =>
+                  editor
+                    ?.chain()
+                    .focus()
+                    .insertTable({ rows: 3, cols: 3, withHeaderRow: true })
+                    .run() || false,
+              ),
+            )}
+          >
+            ▦ 表格
+          </button>
+          <button onClick={advancedMenuAction(openSource)}>MD 原始碼</button>
+          <button onClick={advancedMenuAction(() => void reloadFromFile())}>
+            讀取檔案
+          </button>
+          <button onClick={advancedMenuAction(() => void copyMarkdown())}>複製 MD</button>
+          <a
+            href={`/api/documents/${document.id}/markdown?download=1`}
+            onClick={() => closeAdvancedTools()}
+          >
+            下載 .md
+          </a>
+          {editable && (
+            <>
+              <button onClick={advancedMenuAction(() => onCreateSubpage?.(document.id))}>
+                ＋ 子頁面
+              </button>
+              <button
+                className="editor-danger"
+                onClick={advancedMenuAction(() => onDelete?.())}
+              >
+                刪除頁面
+              </button>
+            </>
+          )}
+        </div>
+      )}
       <input
         ref={imageInputRef}
         hidden
@@ -1269,7 +1413,7 @@ export function CollaborativeEditor({
           <EditorContent editor={editor} />
         </div>
       )}
-      <p className="editor-status">
+      <p className="editor-status" role="status" aria-live="polite" aria-atomic="true">
         {status}
         {onlineMembers ? ` · 線上 ${onlineMembers} 位` : ""}
       </p>

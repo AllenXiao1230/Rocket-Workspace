@@ -71,7 +71,9 @@ export function DocumentSyncBlocks({
       {blocks.map((block) => (
         <article key={block.id}>
           <textarea
-            aria-label="同步區塊內容"
+            aria-label={`同步區塊內容；連結文件：${
+              block.links.map((link) => link.document.title).join("、") || "未命名文件"
+            }`}
             value={block.content}
             readOnly={!editable}
             onChange={(event) =>
@@ -92,6 +94,7 @@ export function DocumentSyncBlocks({
       {editable && (
         <div className="document-sync-block-create">
           <select
+            aria-label="選擇要連結的文件"
             value={targetDocumentId}
             onChange={(event) => setTargetDocumentId(event.target.value)}
           >
@@ -105,6 +108,7 @@ export function DocumentSyncBlocks({
               ))}
           </select>
           <textarea
+            aria-label="新同步區塊內容"
             value={content}
             onChange={(event) => setContent(event.target.value)}
             placeholder="輸入要在兩份文件間同步的文字"

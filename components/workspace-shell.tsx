@@ -1,6 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { signOut } from "next-auth/react";
 import {
   Bug,
@@ -22,7 +23,11 @@ import { DatabaseTable, type DatabaseData } from "@/components/database-view";
 import { WorkspaceSearch } from "@/components/workspace-search";
 import { SettingsPanel } from "@/components/settings-panel";
 import { TeamManagement, type TeamMember } from "@/components/team-management";
-import { ProjectModuleBoard, type ModuleRecord } from "@/components/project-module-board";
+import {
+  ProjectModuleBoard,
+  type ModuleRecord,
+  type TaskView,
+} from "@/components/project-module-board";
 import { GanttBoard } from "@/components/gantt-board";
 import { DocumentRecycleBin } from "@/components/document-recycle-bin";
 import { AiAssistant } from "@/components/ai-assistant";
@@ -70,6 +75,15 @@ type RecordData = {
 };
 type ModuleName = keyof RecordData;
 type WorkspaceModule = ModuleName | "gantt";
+type WorkspacePanel = "settings" | "team" | "recycle" | "ai";
+type WorkspaceView = {
+  documentId?: string;
+  databaseId?: string;
+  module?: WorkspaceModule;
+  taskId?: string | null;
+  taskView?: TaskView;
+  panel?: WorkspacePanel;
+};
 type AppDialog = {
   title: string;
   description?: string;
@@ -103,6 +117,7 @@ function DocumentTree({
   onSelectDatabase,
   onCreateChild,
   onMove,
+  onMoveToRoot,
   onDuplicate,
   onDelete,
   onLoadMore,
@@ -120,6 +135,7 @@ function DocumentTree({
     targetId: string,
     placement: "before" | "after" | "inside",
   ) => void;
+  onMoveToRoot: (id: string) => void;
   onDuplicate: (id: string) => void;
   onDelete: (id: string) => void;
   onLoadMore: () => void;
@@ -152,6 +168,10 @@ function DocumentTree({
     x: number;
     y: number;
   } | null>(null);
+  const [movePicker, setMovePicker] = useState<{
+    sourceId: string;
+    targetId: string;
+  } | null>(null);
   const contextMenuTriggerRef = useRef<HTMLElement | null>(null);
   const closeContextMenu = useCallback((restoreFocus = false) => {
     setContextMenu(null);
@@ -165,6 +185,47 @@ function DocumentTree({
     Boolean(contextMenu),
     () => closeContextMenu(true),
   );
+  const closeMovePicker = useCallback(() => {
+    setMovePicker(null);
+    window.requestAnimationFrame(() => {
+      contextMenuTriggerRef.current?.focus({ preventScroll: true });
+    });
+  }, []);
+  const movePickerRef = useDialogFocus<HTMLElement>(Boolean(movePicker), closeMovePicker);
+  const positionContextMenu = (x: number, y: number) => ({
+    x: Math.min(Math.max(8, x), Math.max(8, window.innerWidth - 174)),
+    y: Math.min(Math.max(8, y), Math.max(8, window.innerHeight - 194)),
+  });
+  const contextDocument = contextMenu
+    ? documents.find((item) => item.id === contextMenu.id)
+    : undefined;
+  const contextSiblings = contextDocument
+    ? byParent[contextDocument.parentId || "root"] || []
+    : [];
+  const contextIndex = contextDocument
+    ? contextSiblings.findIndex((item) => item.id === contextDocument.id)
+    : -1;
+  const previousSibling =
+    contextIndex > 0 ? contextSiblings[contextIndex - 1] : undefined;
+  const nextSibling =
+    contextIndex >= 0 && contextIndex < contextSiblings.length - 1
+      ? contextSiblings[contextIndex + 1]
+      : undefined;
+  const moveTargets = useMemo(() => {
+    if (!movePicker) return [];
+    const descendants = new Set<string>();
+    const queue = [movePicker.sourceId];
+    while (queue.length) {
+      const parentId = queue.shift()!;
+      for (const child of byParent[parentId] || []) {
+        descendants.add(child.id);
+        queue.push(child.id);
+      }
+    }
+    return documents
+      .filter((item) => item.id !== movePicker.sourceId && !descendants.has(item.id))
+      .sort((left, right) => left.position - right.position);
+  }, [byParent, documents, movePicker]);
   const toggle = (id: string) =>
     setCollapsed((current) => {
       const next = new Set(current);
@@ -188,7 +249,10 @@ function DocumentTree({
                 document.activeElement instanceof HTMLElement
                   ? document.activeElement
                   : null;
-              setContextMenu({ id: item.id, x: event.clientX, y: event.clientY });
+              setContextMenu({
+                id: item.id,
+                ...positionContextMenu(event.clientX, event.clientY),
+              });
             }}
             onDragStart={(event) => {
               event.dataTransfer.effectAllowed = "move";
@@ -267,8 +331,7 @@ function DocumentTree({
                 contextMenuTriggerRef.current = event.currentTarget;
                 setContextMenu({
                   id: item.id,
-                  x: Math.min(rect.right + 6, window.innerWidth - 174),
-                  y: Math.min(rect.top, window.innerHeight - 92),
+                  ...positionContextMenu(rect.right + 6, rect.top),
                 });
               }}
             >
@@ -311,11 +374,53 @@ function DocumentTree({
           ref={contextMenuRef}
           className="tree-context-menu"
           role="menu"
-          aria-label="文件操作"
+          aria-label={
+            contextDocument ? `${contextDocument.title} 的文件操作` : "文件操作"
+          }
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onClick={(event) => event.stopPropagation()}
           onKeyDown={onContextMenuKeyDown}
         >
+          <button
+            role="menuitem"
+            disabled={!previousSibling}
+            aria-label={
+              previousSibling && contextDocument
+                ? `將 ${contextDocument.title} 移到 ${previousSibling.title} 之前`
+                : "已經是同層第一項"
+            }
+            onClick={() => {
+              if (previousSibling) onMove(contextMenu.id, previousSibling.id, "before");
+              closeContextMenu(true);
+            }}
+          >
+            ↑ 移到前一項之前
+          </button>
+          <button
+            role="menuitem"
+            disabled={!nextSibling}
+            aria-label={
+              nextSibling && contextDocument
+                ? `將 ${contextDocument.title} 移到 ${nextSibling.title} 之後`
+                : "已經是同層最後一項"
+            }
+            onClick={() => {
+              if (nextSibling) onMove(contextMenu.id, nextSibling.id, "after");
+              closeContextMenu(true);
+            }}
+          >
+            ↓ 移到下一項之後
+          </button>
+          <button
+            role="menuitem"
+            aria-haspopup="dialog"
+            onClick={() => {
+              setMovePicker({ sourceId: contextMenu.id, targetId: "" });
+              closeContextMenu();
+            }}
+          >
+            ⇲ 移至其他頁面…
+          </button>
           <button
             role="menuitem"
             onClick={() => {
@@ -338,6 +443,77 @@ function DocumentTree({
           </button>
         </div>
       )}
+      {movePicker && (
+        <div
+          className="app-dialog-backdrop"
+          role="presentation"
+          onMouseDown={closeMovePicker}
+        >
+          <section
+            ref={movePickerRef}
+            className="app-dialog tree-move-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="tree-move-dialog-title"
+            tabIndex={-1}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <p className="eyebrow">文件結構</p>
+            <h2 id="tree-move-dialog-title">移動文件</h2>
+            <p>選擇要將此文件移入的上層頁面，或直接移回專案根層。</p>
+            <label>
+              移入此頁面下
+              <select
+                data-dialog-initial-focus
+                value={movePicker.targetId}
+                onChange={(event) =>
+                  setMovePicker((current) =>
+                    current ? { ...current, targetId: event.target.value } : current,
+                  )
+                }
+              >
+                <option value="">選擇目標頁面…</option>
+                {moveTargets.map((target) => (
+                  <option key={target.id} value={target.id}>
+                    {target.title || "未命名文件"}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <footer>
+              <button
+                className="dialog-secondary"
+                type="button"
+                onClick={() => {
+                  onMoveToRoot(movePicker.sourceId);
+                  closeMovePicker();
+                }}
+              >
+                移至專案根層
+              </button>
+              <button
+                className="dialog-primary"
+                type="button"
+                disabled={!movePicker.targetId}
+                onClick={() => {
+                  if (!movePicker.targetId) return;
+                  onMove(movePicker.sourceId, movePicker.targetId, "inside");
+                  closeMovePicker();
+                }}
+              >
+                移入所選頁面
+              </button>
+              <button
+                className="dialog-secondary"
+                type="button"
+                onClick={closeMovePicker}
+              >
+                取消
+              </button>
+            </footer>
+          </section>
+        </div>
+      )}
     </nav>
   );
 }
@@ -352,8 +528,11 @@ export function WorkspaceShell({
   documents: initialDocuments,
   nextDocumentCursor: initialNextDocumentCursor,
   initialActiveId,
+  initialDatabaseId,
   initialModule,
   initialSelectedTaskId,
+  initialTaskView,
+  initialPanel,
   databases: initialDatabases,
   records,
   myTasks,
@@ -374,13 +553,20 @@ export function WorkspaceShell({
   documents: DocumentItem[];
   nextDocumentCursor?: string | null;
   initialActiveId?: string;
+  initialDatabaseId?: string;
   initialModule?: WorkspaceModule;
   initialSelectedTaskId?: string;
+  initialTaskView?: TaskView;
+  initialPanel?: WorkspacePanel;
   databases: DatabaseData[];
   records: RecordData;
   myTasks: MyTask[];
   teamMembers: TeamMember[];
 }) {
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const [, startTransition] = useTransition();
   const [documents, setDocuments] = useState(initialDocuments);
   const [nextDocumentCursor, setNextDocumentCursor] = useState(
     initialNextDocumentCursor || null,
@@ -389,21 +575,22 @@ export function WorkspaceShell({
   const [activeId, setActiveId] = useState(
     initialActiveId || initialDocuments[0]?.id || "",
   );
-  const [activeDatabaseId, setActiveDatabaseId] = useState("");
+  const [activeDatabaseId, setActiveDatabaseId] = useState(initialDatabaseId || "");
   const [module, setModule] = useState<WorkspaceModule | null>(initialModule || null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(
     initialSelectedTaskId || null,
   );
+  const [taskView, setTaskView] = useState<TaskView>(initialTaskView || "table");
   const [projectRecords, setProjectRecords] = useState(records);
   const [personalTasks, setPersonalTasks] = useState(myTasks);
   const [nextPersonalTaskCursor, setNextPersonalTaskCursor] = useState<string | null>(
     null,
   );
   const [loadingPersonalTasks, setLoadingPersonalTasks] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [showTeam, setShowTeam] = useState(false);
-  const [showRecycle, setShowRecycle] = useState(false);
-  const [showAi, setShowAi] = useState(false);
+  const [showSettings, setShowSettings] = useState(initialPanel === "settings");
+  const [showTeam, setShowTeam] = useState(initialPanel === "team");
+  const [showRecycle, setShowRecycle] = useState(initialPanel === "recycle");
+  const [showAi, setShowAi] = useState(initialPanel === "ai");
   const [templatePicker, setTemplatePicker] = useState(false);
   const [workspaceName, setWorkspaceName] = useState(workspace);
   const [projectDisplay, setProjectDisplay] = useState(project);
@@ -413,9 +600,26 @@ export function WorkspaceShell({
   useEffect(() => {
     setProjectRecords(records);
     setPersonalTasks(myTasks);
+  }, [records, myTasks]);
+  useEffect(() => {
+    setActiveId(initialActiveId || initialDocuments[0]?.id || "");
+    setActiveDatabaseId(initialDatabaseId || "");
+    setModule(initialModule || null);
     setSelectedTaskId(initialSelectedTaskId || null);
-    if (initialModule) setModule(initialModule);
-  }, [records, myTasks, initialModule, initialSelectedTaskId]);
+    setTaskView(initialTaskView || "table");
+    setShowSettings(initialPanel === "settings");
+    setShowTeam(initialPanel === "team");
+    setShowRecycle(initialPanel === "recycle");
+    setShowAi(initialPanel === "ai");
+  }, [
+    initialActiveId,
+    initialDatabaseId,
+    initialDocuments,
+    initialModule,
+    initialPanel,
+    initialSelectedTaskId,
+    initialTaskView,
+  ]);
   useEffect(() => {
     let cancelled = false;
     setLoadingPersonalTasks(true);
@@ -490,6 +694,20 @@ export function WorkspaceShell({
     (issue) => issue.status !== "RESOLVED" && issue.status !== "WONT_FIX",
   ).length;
   const activeDatabase = databases.find((database) => database.id === activeDatabaseId);
+  const isDocumentView = Boolean(
+    active &&
+      !activeDatabase &&
+      !module &&
+      !showSettings &&
+      !showAi &&
+      !showTeam &&
+      !showRecycle,
+  );
+  const collaborationLocation = isDocumentView
+    ? active?.content
+      ? "此文件內顯示"
+      : "文件載入後顯示"
+    : "開啟文件後顯示";
   const currentViewTitle = showSettings
     ? "設定中心"
     : showAi
@@ -539,6 +757,7 @@ export function WorkspaceShell({
           dueDate: task.dueDate,
           updatedAt: task.updatedAt,
           dependencies: task.dependencies,
+          workspaceId,
           projectId: project.id,
           projectName: project.name,
           projectCode: project.code,
@@ -563,6 +782,94 @@ export function WorkspaceShell({
   }
   const notify = (title: string, description?: string) =>
     setDialog({ title, description, confirmLabel: "知道了" });
+  const navigateToView = useCallback(
+    (view: WorkspaceView) => {
+      const params = new URLSearchParams(searchParams.toString());
+      ["document", "database", "module", "task", "taskView", "panel"].forEach((key) =>
+        params.delete(key),
+      );
+      params.set("workspace", workspaceId);
+      params.set("project", project.id);
+      if (view.documentId) params.set("document", view.documentId);
+      if (view.databaseId) params.set("database", view.databaseId);
+      if (view.module) params.set("module", view.module);
+      if (view.taskId) params.set("task", view.taskId);
+      if (view.taskView) params.set("taskView", view.taskView);
+      if (view.panel) params.set("panel", view.panel);
+      const href = `${pathname}?${params.toString()}`;
+      if (href === `${pathname}${searchParams.size ? `?${searchParams.toString()}` : ""}`)
+        return;
+      startTransition(() => router.push(href, { scroll: false }));
+    },
+    [pathname, project.id, router, searchParams, startTransition, workspaceId],
+  );
+  const openView = useCallback(
+    (view: WorkspaceView) => {
+      if (view.documentId) setActiveId(view.documentId);
+      setActiveDatabaseId(view.databaseId || "");
+      setModule(view.module || null);
+      setSelectedTaskId(view.taskId || null);
+      setTaskView(view.taskView || "table");
+      setShowSettings(view.panel === "settings");
+      setShowTeam(view.panel === "team");
+      setShowRecycle(view.panel === "recycle");
+      setShowAi(view.panel === "ai");
+      navigateToView(view);
+    },
+    [navigateToView],
+  );
+  const navigateToProject = useCallback(
+    (
+      nextProjectId: string,
+      nextWorkspaceId = workspaceId,
+      view: Pick<WorkspaceView, "module" | "taskId" | "taskView"> = {},
+    ) => {
+      const params = new URLSearchParams();
+      params.set("workspace", nextWorkspaceId);
+      params.set("project", nextProjectId);
+      if (view.module) params.set("module", view.module);
+      if (view.taskId) params.set("task", view.taskId);
+      if (view.taskView) params.set("taskView", view.taskView);
+      startTransition(() =>
+        router.push(`${pathname}?${params.toString()}`, { scroll: false }),
+      );
+    },
+    [pathname, router, startTransition, workspaceId],
+  );
+  const navigateToWorkspace = useCallback(
+    (nextWorkspaceId: string) => {
+      const params = new URLSearchParams();
+      params.set("workspace", nextWorkspaceId);
+      startTransition(() =>
+        router.push(`${pathname}?${params.toString()}`, { scroll: false }),
+      );
+    },
+    [pathname, router, startTransition],
+  );
+  function openPersonalTask(task: MyTask) {
+    if (task.projectId !== project.id)
+      return navigateToProject(task.projectId, task.workspaceId, {
+        module: "tasks",
+        taskId: task.id || null,
+        taskView,
+      });
+    openView({ module: "tasks", taskId: task.id || null, taskView });
+  }
+  function renderMyWorkPanel() {
+    return (
+      <MyWorkPanel
+        tasks={personalTasks}
+        editable={currentUser.role !== "VIEWER"}
+        currentWorkspaceId={workspaceId}
+        currentProjectId={project.id}
+        hasMore={Boolean(nextPersonalTaskCursor)}
+        loadingMore={loadingPersonalTasks}
+        onLoadMore={() => void loadMorePersonalTasks()}
+        onTaskUpdated={handlePersonalTaskUpdated}
+        onOpenTask={openPersonalTask}
+      />
+    );
+  }
   async function createDocument(title: string, parentId?: string, templateId?: string) {
     if (!title.trim()) return;
     const response = await fetch(`/api/projects/${project.id}/documents`, {
@@ -577,11 +884,7 @@ export function WorkspaceShell({
     if (!response.ok) return notify("無法建立文件", "請確認你的編輯權限後再試一次。");
     const document = await response.json();
     setDocuments((current) => [...current, document]);
-    setActiveId(document.id);
-    setActiveDatabaseId("");
-    setModule(null);
-    setShowSettings(false);
-    setShowTeam(false);
+    openView({ documentId: document.id });
   }
   async function createDatabase(name: string, parentDocumentId?: string) {
     if (!name.trim()) return;
@@ -596,10 +899,7 @@ export function WorkspaceShell({
     if (!response.ok) return notify("無法建立資料庫", "請確認你的編輯權限後再試一次。");
     const database = await response.json();
     setDatabases((current) => [...current, database]);
-    setActiveDatabaseId(database.id);
-    setModule(null);
-    setShowSettings(false);
-    setShowTeam(false);
+    openView({ databaseId: database.id });
   }
   async function deleteDocument(id: string) {
     const response = await fetch(`/api/documents/${id}`, { method: "DELETE" });
@@ -609,13 +909,13 @@ export function WorkspaceShell({
       current.filter((document) => !result.removedIds.includes(document.id)),
     );
     const next = documents.find((document) => !result.removedIds.includes(document.id));
-    setActiveId(next?.id || "");
+    openView(next ? { documentId: next.id } : {});
   }
   async function deleteDatabase(id: string) {
     const response = await fetch(`/api/databases/${id}`, { method: "DELETE" });
     if (!response.ok) return notify("無法刪除資料庫", "請確認你的管理權限後再試一次。");
     setDatabases((current) => current.filter((database) => database.id !== id));
-    setActiveDatabaseId("");
+    openView(activeId ? { documentId: activeId } : {});
   }
   async function duplicateDocument(id: string) {
     const response = await fetch(`/api/documents/${id}/duplicate`, { method: "POST" });
@@ -623,11 +923,34 @@ export function WorkspaceShell({
     if (!response.ok)
       return notify("無法複製文件", result.error || "請確認你的編輯權限後再試一次。");
     setDocuments((current) => [...current, result]);
-    setActiveId(result.id);
-    setActiveDatabaseId("");
-    setModule(null);
-    setShowSettings(false);
-    setShowTeam(false);
+    openView({ documentId: result.id });
+  }
+  async function persistDocumentMove(
+    draggedId: string,
+    parentId: string | null,
+    position: number,
+  ) {
+    const response = await fetch(`/api/documents/${draggedId}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ parentId, position: Math.max(0, position) }),
+    });
+    const result = await response.json();
+    if (!response.ok) return notify("無法移動頁面", result.error || "請稍後再試。");
+    const moved = new Map(
+      (
+        result.documents as Array<{
+          id: string;
+          parentId: string | null;
+          position: number;
+        }>
+      ).map((item) => [item.id, item]),
+    );
+    setDocuments((current) =>
+      current.map((item) =>
+        moved.has(item.id) ? { ...item, ...moved.get(item.id) } : item,
+      ),
+    );
   }
   async function moveDocument(
     draggedId: string,
@@ -646,27 +969,15 @@ export function WorkspaceShell({
         ? siblings.length
         : siblings.findIndex((item) => item.id === targetId) +
           (placement === "after" ? 1 : 0);
-    const response = await fetch(`/api/documents/${draggedId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ parentId, position: Math.max(0, targetIndex) }),
-    });
-    const result = await response.json();
-    if (!response.ok) return notify("無法移動頁面", result.error || "請稍後再試。");
-    const moved = new Map(
-      (
-        result.documents as Array<{
-          id: string;
-          parentId: string | null;
-          position: number;
-        }>
-      ).map((item) => [item.id, item]),
-    );
-    setDocuments((current) =>
-      current.map((item) =>
-        moved.has(item.id) ? { ...item, ...moved.get(item.id) } : item,
-      ),
-    );
+    await persistDocumentMove(draggedId, parentId, targetIndex);
+  }
+  async function moveDocumentToRoot(draggedId: string) {
+    const dragged = documents.find((item) => item.id === draggedId);
+    if (!dragged || dragged.parentId === null) return;
+    const rootPosition = documents.filter(
+      (item) => item.parentId === null && item.id !== draggedId,
+    ).length;
+    await persistDocumentMove(draggedId, null, rootPosition);
   }
   const requestCreateDocument = (parentId?: string) =>
     setDialog({
@@ -708,7 +1019,13 @@ export function WorkspaceShell({
       nextCursor?: string | null;
     };
     if (!response.ok) return notify("無法載入更多文件", "請稍後再試。");
-    setDocuments((current) => [...current, ...(result.documents || [])]);
+    setDocuments((current) => {
+      const knownIds = new Set(current.map((document) => document.id));
+      return [
+        ...current,
+        ...(result.documents || []).filter((document) => !knownIds.has(document.id)),
+      ];
+    });
     setNextDocumentCursor(result.nextCursor || null);
   }
   return (
@@ -734,11 +1051,7 @@ export function WorkspaceShell({
               <select
                 value={workspaceId}
                 aria-label="切換工作空間"
-                onChange={(event) => {
-                  window.location.assign(
-                    `/?workspace=${encodeURIComponent(event.target.value)}`,
-                  );
-                }}
+                onChange={(event) => navigateToWorkspace(event.target.value)}
               >
                 {workspaces.map((item) => (
                   <option key={item.id} value={item.id}>
@@ -753,11 +1066,7 @@ export function WorkspaceShell({
             <select
               value={project.id}
               aria-label="切換專案"
-              onChange={(event) => {
-                window.location.assign(
-                  `/?workspace=${encodeURIComponent(workspaceId)}&project=${encodeURIComponent(event.target.value)}`,
-                );
-              }}
+              onChange={(event) => navigateToProject(event.target.value)}
             >
               {projects.map((item) => (
                 <option key={item.id} value={item.id}>
@@ -789,23 +1098,11 @@ export function WorkspaceShell({
             databases={databases}
             activeId={activeId}
             activeDatabaseId={activeDatabaseId}
-            onSelect={(id) => {
-              setActiveId(id);
-              setActiveDatabaseId("");
-              setModule(null);
-              setShowSettings(false);
-              setShowTeam(false);
-              setShowRecycle(false);
-            }}
-            onSelectDatabase={(id) => {
-              setActiveDatabaseId(id);
-              setModule(null);
-              setShowSettings(false);
-              setShowTeam(false);
-              setShowRecycle(false);
-            }}
+            onSelect={(id) => openView({ documentId: id })}
+            onSelectDatabase={(id) => openView({ databaseId: id })}
             onCreateChild={requestCreateDocument}
             onMove={moveDocument}
+            onMoveToRoot={moveDocumentToRoot}
             onDuplicate={(id) => void duplicateDocument(id)}
             onDelete={requestDeleteDocument}
             onLoadMore={() => void loadMoreDocuments()}
@@ -822,12 +1119,7 @@ export function WorkspaceShell({
                 <button
                   key={database.id}
                   className={activeDatabaseId === database.id ? "active" : ""}
-                  onClick={() => {
-                    setActiveDatabaseId(database.id);
-                    setModule(null);
-                    setShowSettings(false);
-                    setShowTeam(false);
-                  }}
+                  onClick={() => openView({ databaseId: database.id })}
                 >
                   <FileText size={16} aria-hidden="true" />
                   {database.name}
@@ -846,23 +1138,11 @@ export function WorkspaceShell({
             databases={databases}
             activeId={activeId}
             activeDatabaseId={activeDatabaseId}
-            onSelect={(id) => {
-              setActiveId(id);
-              setActiveDatabaseId("");
-              setModule(null);
-              setShowSettings(false);
-              setShowTeam(false);
-              setShowRecycle(false);
-            }}
-            onSelectDatabase={(id) => {
-              setActiveDatabaseId(id);
-              setModule(null);
-              setShowSettings(false);
-              setShowTeam(false);
-              setShowRecycle(false);
-            }}
+            onSelect={(id) => openView({ documentId: id })}
+            onSelectDatabase={(id) => openView({ databaseId: id })}
             onCreateChild={requestCreateDocument}
             onMove={moveDocument}
+            onMoveToRoot={moveDocumentToRoot}
             onDuplicate={(id) => void duplicateDocument(id)}
             onDelete={requestDeleteDocument}
             onLoadMore={() => void loadMoreDocuments()}
@@ -879,12 +1159,7 @@ export function WorkspaceShell({
                 <button
                   key={database.id}
                   className={activeDatabaseId === database.id ? "active" : ""}
-                  onClick={() => {
-                    setActiveDatabaseId(database.id);
-                    setModule(null);
-                    setShowSettings(false);
-                    setShowTeam(false);
-                  }}
+                  onClick={() => openView({ databaseId: database.id })}
                 >
                   <FileText size={16} aria-hidden="true" />
                   {database.name}
@@ -897,49 +1172,25 @@ export function WorkspaceShell({
         </button>
         <button
           className={`workspace-settings-link sidebar-recycle-link ${showRecycle ? "active" : ""}`}
-          onClick={() => {
-            setShowRecycle(true);
-            setShowSettings(false);
-            setShowTeam(false);
-            setModule(null);
-            setActiveDatabaseId("");
-          }}
+          onClick={() => openView({ panel: "recycle" })}
         >
           <Trash size={16} weight="bold" aria-hidden="true" /> 回收桶
         </button>
         <button
           className={`workspace-settings-link ${showTeam ? "active" : ""}`}
-          onClick={() => {
-            setShowTeam(true);
-            setShowSettings(false);
-            setModule(null);
-            setActiveDatabaseId("");
-          }}
+          onClick={() => openView({ panel: "team" })}
         >
           <UsersThree size={16} weight="bold" aria-hidden="true" /> 團隊成員
         </button>
         <button
           className={`workspace-settings-link ${showAi ? "active" : ""}`}
-          onClick={() => {
-            setShowAi(true);
-            setShowSettings(false);
-            setShowTeam(false);
-            setShowRecycle(false);
-            setModule(null);
-            setActiveDatabaseId("");
-          }}
+          onClick={() => openView({ panel: "ai" })}
         >
           <Sparkle size={16} weight="bold" aria-hidden="true" /> AI 與整合
         </button>
         <button
           className={`workspace-settings-link ${showSettings ? "active" : ""}`}
-          onClick={() => {
-            setShowSettings(true);
-            setShowAi(false);
-            setShowTeam(false);
-            setModule(null);
-            setActiveDatabaseId("");
-          }}
+          onClick={() => openView({ panel: "settings" })}
         >
           <GearSix size={16} weight="bold" aria-hidden="true" /> 設定中心
         </button>
@@ -958,36 +1209,22 @@ export function WorkspaceShell({
           <div className="topbar-actions">
             <WorkspaceSearch
               projectId={project.id}
-              onSelect={(result) => {
-                setShowSettings(false);
-                setShowAi(false);
-                setShowTeam(false);
-                setShowRecycle(false);
-                setModule(null);
-                if (result.type === "document") {
-                  setActiveId(result.id);
-                  setActiveDatabaseId("");
-                } else setActiveDatabaseId(result.id);
-              }}
+              onSelect={(result) =>
+                openView(
+                  result.type === "document"
+                    ? { documentId: result.id }
+                    : { databaseId: result.id },
+                )
+              }
             />
             <button
               className="topbar-settings"
               aria-label="開啟設定中心"
               title="設定中心"
-              onClick={() => {
-                setShowSettings(true);
-                setShowAi(false);
-                setShowTeam(false);
-                setShowRecycle(false);
-                setModule(null);
-                setActiveDatabaseId("");
-              }}
+              onClick={() => openView({ panel: "settings" })}
             >
               <GearSix size={20} weight="bold" aria-hidden="true" />
             </button>
-            <span className="sync-state">
-              <i /> 即時同步中
-            </span>
             <span className="role-badge">{currentUser.role}</span>
             <div className="avatar" title={currentUser.name}>
               {currentUser.avatarUrl ? (
@@ -1007,14 +1244,7 @@ export function WorkspaceShell({
                 type="button"
                 className={module === name ? "active" : ""}
                 aria-current={module === name ? "page" : undefined}
-                onClick={() => {
-                  setModule(name);
-                  setSelectedTaskId(null);
-                  setActiveDatabaseId("");
-                  setShowSettings(false);
-                  setShowTeam(false);
-                  setShowRecycle(false);
-                }}
+                onClick={() => openView({ module: name })}
               >
                 <Icon size={18} weight="bold" aria-hidden="true" />
                 <span>{moduleLabels[name]}</span>
@@ -1022,6 +1252,15 @@ export function WorkspaceShell({
             );
           })}
         </nav>
+        {!showSettings && !showAi && !showTeam && !showRecycle && (
+          <details className="mobile-my-work">
+            <summary>
+              <span>我的工作</span>
+              <small>查看個人任務與到期提醒</small>
+            </summary>
+            <div className="mobile-my-work-content">{renderMyWorkPanel()}</div>
+          </details>
+        )}
         {showSettings ? (
           <SettingsPanel
             projectId={project.id}
@@ -1042,9 +1281,7 @@ export function WorkspaceShell({
             onProfileSaved={(profile) =>
               setCurrentUser((current) => ({ ...current, ...profile }))
             }
-            onProjectCreated={(id) =>
-              window.location.assign(`/?project=${encodeURIComponent(id)}`)
-            }
+            onProjectCreated={navigateToProject}
             onDocumentsScanned={(scanned) =>
               setDocuments((current) => {
                 const knownIds = new Set(current.map((document) => document.id));
@@ -1063,7 +1300,7 @@ export function WorkspaceShell({
           <DocumentRecycleBin
             projectId={project.id}
             canWrite={currentUser.role !== "VIEWER"}
-            onRestored={() => window.location.reload()}
+            onRestored={() => router.refresh()}
           />
         ) : module === "gantt" ? (
           <GanttBoard
@@ -1080,7 +1317,19 @@ export function WorkspaceShell({
             editable={currentUser.role !== "VIEWER"}
             canPurge={currentUser.role === "OWNER" || currentUser.role === "ADMIN"}
             initialSelectedId={module === "tasks" ? selectedTaskId : undefined}
-            onSelectedIdChange={module === "tasks" ? setSelectedTaskId : undefined}
+            onSelectedIdChange={
+              module === "tasks"
+                ? (id) => openView({ module: "tasks", taskId: id, taskView })
+                : undefined
+            }
+            taskView={taskView}
+            onTaskViewChange={(nextTaskView) =>
+              openView({
+                module: "tasks",
+                taskId: selectedTaskId,
+                taskView: nextTaskView,
+              })
+            }
             onRecordsChange={(next) => handleModuleRecordsChange(module, next)}
           />
         ) : activeDatabase ? (
@@ -1142,27 +1391,7 @@ export function WorkspaceShell({
         }}
       />
       <aside className="rightbar">
-        <MyWorkPanel
-          tasks={personalTasks}
-          editable={currentUser.role !== "VIEWER"}
-          currentProjectId={project.id}
-          hasMore={Boolean(nextPersonalTaskCursor)}
-          loadingMore={loadingPersonalTasks}
-          onLoadMore={() => void loadMorePersonalTasks()}
-          onTaskUpdated={handlePersonalTaskUpdated}
-          onOpenTask={(task) => {
-            if (task.projectId !== project.id)
-              return window.location.assign(
-                `/?project=${encodeURIComponent(task.projectId)}&task=${encodeURIComponent(task.id)}`,
-              );
-            setModule("tasks");
-            setSelectedTaskId(task.id || null);
-            setActiveDatabaseId("");
-            setShowSettings(false);
-            setShowTeam(false);
-            setShowRecycle(false);
-          }}
-        />
+        {renderMyWorkPanel()}
         <section className="module-panel">
           <div className="panel-heading">
             <h2>專案模組</h2>
@@ -1173,13 +1402,7 @@ export function WorkspaceShell({
               <button
                 key={name}
                 className={`module ${module === name ? "active" : ""}`}
-                onClick={() => {
-                  setModule(name);
-                  setSelectedTaskId(null);
-                  setActiveDatabaseId("");
-                  setShowSettings(false);
-                  setShowTeam(false);
-                }}
+                onClick={() => openView({ module: name })}
               >
                 {(() => {
                   const Icon = moduleIcons[name];
@@ -1212,8 +1435,8 @@ export function WorkspaceShell({
             <strong>{projectRecords.tests.length}</strong>
           </div>
           <div className="signal-row">
-            <span>線上協作者</span>
-            <strong className="good">01</strong>
+            <span>協作狀態</span>
+            <strong>{collaborationLocation}</strong>
           </div>
         </section>
         <VersionStatus />

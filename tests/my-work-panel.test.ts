@@ -7,6 +7,7 @@ const task = (id: string, status: string, overrides: Partial<MyTask> = {}): MyTa
   status,
   priority: 3,
   dueDate: null,
+  workspaceId: "workspace",
   projectId: "project",
   projectName: "Project",
   projectCode: "PRJ",

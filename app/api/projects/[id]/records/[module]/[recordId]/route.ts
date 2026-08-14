@@ -88,6 +88,37 @@ async function accessFor(
   const kind = moduleSchema.safeParse(values.module);
   return { ...values, access, kind };
 }
+export async function GET(
+  _: Request,
+  { params }: { params: Promise<{ id: string; module: string; recordId: string }> },
+) {
+  const session = await auth();
+  if (!session?.user?.id)
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  const values = await accessFor(params, session.user.id);
+  if (!values.access || !values.kind.success)
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  const where = { id: values.recordId, projectId: values.id, deletedAt: null };
+  const record =
+    values.kind.data === "tasks"
+      ? await prisma.task.findFirst({
+          where,
+          include: {
+            assignee: { select: { id: true, name: true, email: true } },
+            dependencies: {
+              where: { dependsOn: { deletedAt: null } },
+              include: { dependsOn: { select: { id: true, title: true, status: true } } },
+            },
+          },
+        })
+      : values.kind.data === "issues"
+        ? await prisma.issue.findFirst({ where })
+        : values.kind.data === "bom"
+          ? await prisma.bomItem.findFirst({ where })
+          : await prisma.testRecord.findFirst({ where });
+  if (!record) return NextResponse.json({ error: "Not found" }, { status: 404 });
+  return NextResponse.json(record);
+}
 export async function PATCH(
   request: Request,
   { params }: { params: Promise<{ id: string; module: string; recordId: string }> },

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { MemberSettings } from "@/components/member-settings";
 import { StatusMessage } from "@/components/status-message";
@@ -9,8 +9,12 @@ import {
   applyAppearance,
   applyTheme,
   getStoredAppearance,
+  getStoredTheme,
+  themeChangeEvent,
+  validateAppearance,
   type AccentPreset,
   type Appearance,
+  type Theme,
 } from "@/components/theme-toggle";
 import type { TeamMember } from "@/components/team-management";
 
@@ -84,6 +88,51 @@ type ScannedDocument = {
   updatedAt: string;
 };
 
+function getErrorMessage(value: unknown) {
+  if (
+    value &&
+    typeof value === "object" &&
+    "error" in value &&
+    typeof value.error === "string" &&
+    value.error.trim()
+  ) {
+    return value.error;
+  }
+  return null;
+}
+
+function getFieldErrors(value: unknown) {
+  if (!value || typeof value !== "object" || !("fieldErrors" in value)) return {};
+  const fieldErrors = value.fieldErrors;
+  if (!fieldErrors || typeof fieldErrors !== "object") return {};
+  return Object.fromEntries(
+    Object.entries(fieldErrors).flatMap(([name, message]) =>
+      typeof message === "string" && message.trim() ? [[name, message]] : [],
+    ),
+  );
+}
+
+function numberFromForm(data: FormData, name: string, fallback: number) {
+  const value = data.get(name);
+  if (typeof value !== "string" || !value.trim()) return fallback;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function isSavedSettings(
+  value: unknown,
+): value is Settings & { workspace: NonNullable<Settings["workspace"]> } {
+  if (!value || typeof value !== "object") return false;
+  const result = value as Partial<Settings>;
+  return Boolean(
+    result.workspace &&
+      typeof result.workspace.name === "string" &&
+      result.project &&
+      typeof result.project.name === "string" &&
+      typeof result.project.code === "string",
+  );
+}
+
 export function SettingsPanel({
   projectId,
   workspaceId,
@@ -108,8 +157,11 @@ export function SettingsPanel({
   const [settings, setSettings] = useState<Settings | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [notice, setNotice] = useState("");
+  const [noticeTone, setNoticeTone] = useState<"status" | "alert">("status");
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [profileNotice, setProfileNotice] = useState("");
   const [saving, setSaving] = useState(false);
+  const [theme, setCurrentTheme] = useState<Theme>("light");
   const [appearance, setAppearance] = useState<Appearance>({
     preset: "rocket",
     ...accentPresets.rocket,
@@ -126,6 +178,32 @@ export function SettingsPanel({
   const [scanWorking, setScanWorking] = useState(false);
   const [scanNotice, setScanNotice] = useState("");
   const [confirmCalendarRevoke, setConfirmCalendarRevoke] = useState(false);
+  const settingsFormRef = useRef<HTMLFormElement>(null);
+
+  const showNotice = (message: string, tone: "status" | "alert" = "status") => {
+    setNoticeTone(tone);
+    setNotice(message);
+  };
+  const fieldErrorId = (name: string) => `settings-${name}-error`;
+  const fieldA11y = (name: string) =>
+    fieldErrors[name]
+      ? { "aria-invalid": true, "aria-describedby": fieldErrorId(name) }
+      : {};
+  const fieldError = (name: string) =>
+    fieldErrors[name] ? (
+      <span className="field-error" id={fieldErrorId(name)} role="alert">
+        {fieldErrors[name]}
+      </span>
+    ) : null;
+  const showFieldErrors = (errors: Record<string, string>) => {
+    setFieldErrors(errors);
+    const firstField = Object.keys(errors)[0];
+    if (!firstField) return;
+    window.requestAnimationFrame(() => {
+      const element = settingsFormRef.current?.elements.namedItem(firstField);
+      if (element instanceof HTMLElement) element.focus();
+    });
+  };
 
   useEffect(() => {
     void fetch(`/api/projects/${projectId}/settings`)
@@ -158,16 +236,40 @@ export function SettingsPanel({
   }, [projectId, settings?.canManage]);
   useEffect(() => {
     setAppearance(getStoredAppearance());
+    setCurrentTheme(getStoredTheme());
+    const onThemeChange = (event: Event) => {
+      const nextTheme = (event as CustomEvent<Theme>).detail;
+      if (nextTheme === "light" || nextTheme === "dark") setCurrentTheme(nextTheme);
+    };
+    window.addEventListener(themeChangeEvent, onThemeChange);
+    return () => window.removeEventListener(themeChangeEvent, onThemeChange);
   }, []);
   const setTheme = (theme: "light" | "dark") => {
     applyTheme(theme);
-    applyAppearance(appearance);
-    setNotice(theme === "dark" ? "已切換為暗色模式" : "已切換為淺色模式");
+    setCurrentTheme(theme);
+    const applied = applyAppearance(appearance);
+    if (!applied.valid) {
+      setAppearance(applied.appearance);
+      showNotice(`${applied.message} 已改用安全配色。`, "alert");
+      return;
+    }
+    showNotice(theme === "dark" ? "已切換為暗色模式" : "已切換為淺色模式");
   };
   const setAccent = (next: Appearance, message = "配色已套用並儲存在目前瀏覽器") => {
-    setAppearance(next);
-    applyAppearance(next);
-    setNotice(message);
+    const validation = validateAppearance(next);
+    if (!validation.valid) {
+      // Keep the draft in the color controls so people can correct a multi-color
+      // palette one channel at a time, without applying an inaccessible preview.
+      setAppearance(next);
+      showNotice(
+        `${validation.message} 目前仍使用前一組安全配色；調整其他色彩後會自動套用。`,
+        "alert",
+      );
+      return;
+    }
+    const applied = applyAppearance(validation.appearance, appearance);
+    setAppearance(applied.appearance);
+    showNotice(message);
   };
   const selectPreset = (preset: Exclude<AccentPreset, "custom">) =>
     setAccent({ preset, ...accentPresets[preset] });
@@ -178,63 +280,102 @@ export function SettingsPanel({
     const data = new FormData(event.currentTarget);
     setSaving(true);
     setNotice("");
-    const security: Security = {
-      collaborationEnabled: data.get("collaborationEnabled") === "on",
-      attachmentsEnabled: data.get("attachmentsEnabled") === "on",
-      markdownDownloadEnabled: data.get("markdownDownloadEnabled") === "on",
-      accountProvisioningEnabled: data.get("accountProvisioningEnabled") === "on",
-      forcePasswordChangeOnNewAccount:
-        data.get("forcePasswordChangeOnNewAccount") === "on",
-      minimumPasswordLength: Number(data.get("minimumPasswordLength")),
-      loginRateLimitEnabled: data.get("loginRateLimitEnabled") === "on",
-      loginMaxAttempts: Number(data.get("loginMaxAttempts")),
-      loginWindowMinutes: Number(data.get("loginWindowMinutes")),
-    };
-    const ai = {
-      enabled: data.get("aiEnabled") === "on",
-      provider: String(data.get("aiProvider")) as Ai["provider"],
-      baseUrl: String(data.get("aiBaseUrl") || "").trim(),
-      model: String(data.get("aiModel") || "").trim(),
-      apiKey: String(data.get("aiApiKey") || ""),
-    };
-    const integrations = {
-      githubEnabled: data.get("githubEnabled") === "on",
-      githubRepository: String(data.get("githubRepository") || "").trim(),
-      githubToken: String(data.get("githubToken") || ""),
-      webhookEnabled: data.get("webhookEnabled") === "on",
-      webhookUrl: String(data.get("webhookUrl") || "").trim(),
-      webhookSecret: String(data.get("webhookSecret") || ""),
-    };
-    const payload = {
-      workspaceName: data.get("workspaceName"),
-      projectName: data.get("projectName"),
-      projectCode: data.get("projectCode"),
-      projectDescription: String(data.get("projectDescription") || "").trim() || null,
-      security,
-      ai,
-      integrations,
-      ...(settings.canManageHost
-        ? {
-            backupIntervalHours: Number(data.get("backupIntervalHours")),
-            backupRetentionDays: Number(data.get("backupRetentionDays")),
-          }
-        : {}),
-    };
-    const response = await fetch(`/api/projects/${projectId}/settings`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    const result = await response.json();
-    setSaving(false);
-    if (!response.ok) return setNotice(result.error || "無法儲存設定");
-    setSettings(result);
-    onIdentitySaved({
-      workspaceName: result.workspace.name,
-      projectName: result.project.name,
-      projectCode: result.project.code,
-    });
-    setNotice("設定已儲存；安全開關會立即套用於新的操作。 ");
+    setNoticeTone("status");
+    setFieldErrors({});
+    try {
+      const security: Security = {
+        collaborationEnabled: data.get("collaborationEnabled") === "on",
+        attachmentsEnabled: data.get("attachmentsEnabled") === "on",
+        markdownDownloadEnabled: data.get("markdownDownloadEnabled") === "on",
+        accountProvisioningEnabled: data.get("accountProvisioningEnabled") === "on",
+        forcePasswordChangeOnNewAccount:
+          data.get("forcePasswordChangeOnNewAccount") === "on",
+        minimumPasswordLength: numberFromForm(
+          data,
+          "minimumPasswordLength",
+          settings.security.minimumPasswordLength,
+        ),
+        loginRateLimitEnabled: data.get("loginRateLimitEnabled") === "on",
+        loginMaxAttempts: numberFromForm(
+          data,
+          "loginMaxAttempts",
+          settings.security.loginMaxAttempts,
+        ),
+        loginWindowMinutes: numberFromForm(
+          data,
+          "loginWindowMinutes",
+          settings.security.loginWindowMinutes,
+        ),
+      };
+      const ai = {
+        enabled: data.get("aiEnabled") === "on",
+        provider: String(data.get("aiProvider")) as Ai["provider"],
+        baseUrl: String(data.get("aiBaseUrl") || "").trim(),
+        model: String(data.get("aiModel") || "").trim(),
+        apiKey: String(data.get("aiApiKey") || ""),
+      };
+      const integrations = {
+        githubEnabled: data.get("githubEnabled") === "on",
+        githubRepository: String(data.get("githubRepository") || "").trim(),
+        githubToken: String(data.get("githubToken") || ""),
+        webhookEnabled: data.get("webhookEnabled") === "on",
+        webhookUrl: String(data.get("webhookUrl") || "").trim(),
+        webhookSecret: String(data.get("webhookSecret") || ""),
+      };
+      const payload = {
+        workspaceName: data.get("workspaceName"),
+        projectName: data.get("projectName"),
+        projectCode: data.get("projectCode"),
+        projectDescription: String(data.get("projectDescription") || "").trim() || null,
+        security,
+        ai,
+        integrations,
+        ...(settings.canManageHost
+          ? {
+              backupIntervalHours: numberFromForm(
+                data,
+                "backupIntervalHours",
+                settings.backup.intervalHours,
+              ),
+              backupRetentionDays: numberFromForm(
+                data,
+                "backupRetentionDays",
+                settings.backup.retentionDays,
+              ),
+            }
+          : {}),
+      };
+      const response = await fetch(`/api/projects/${projectId}/settings`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const result: unknown = await response.json();
+      if (!response.ok) {
+        const errors = getFieldErrors(result);
+        if (Object.keys(errors).length) showFieldErrors(errors);
+        showNotice(
+          getErrorMessage(result) || "無法儲存設定，請檢查內容後再試一次。",
+          "alert",
+        );
+        return;
+      }
+      if (!isSavedSettings(result)) throw new Error("Invalid settings response");
+      setSettings(result);
+      onIdentitySaved({
+        workspaceName: result.workspace.name,
+        projectName: result.project.name,
+        projectCode: result.project.code,
+      });
+      showNotice("設定已儲存；安全開關會立即套用於新的操作。");
+    } catch {
+      showNotice(
+        "儲存未完成。請檢查網路連線後再試一次；你的輸入仍保留在表單中。",
+        "alert",
+      );
+    } finally {
+      setSaving(false);
+    }
   }
   async function saveProfile(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -445,7 +586,7 @@ export function SettingsPanel({
           {profileNotice && <StatusMessage>{profileNotice}</StatusMessage>}
         </form>
       )}
-      <form className="settings-grid" onSubmit={save}>
+      <form ref={settingsFormRef} className="settings-grid" onSubmit={save}>
         <section className="settings-card settings-workspace">
           <h2>工作空間與專案</h2>
           <label>
@@ -454,7 +595,11 @@ export function SettingsPanel({
               name="workspaceName"
               defaultValue={settings.workspace?.name || ""}
               disabled={!settings.canManage}
+              required
+              maxLength={100}
+              {...fieldA11y("workspaceName")}
             />
+            {fieldError("workspaceName")}
           </label>
           <label>
             專案名稱
@@ -462,7 +607,11 @@ export function SettingsPanel({
               name="projectName"
               defaultValue={settings.project.name}
               disabled={!settings.canManage}
+              required
+              maxLength={120}
+              {...fieldA11y("projectName")}
             />
+            {fieldError("projectName")}
           </label>
           <label>
             專案代碼
@@ -470,7 +619,13 @@ export function SettingsPanel({
               name="projectCode"
               defaultValue={settings.project.code}
               disabled={!settings.canManage}
+              required
+              minLength={2}
+              maxLength={32}
+              pattern="[A-Za-z0-9_-]+"
+              {...fieldA11y("projectCode")}
             />
+            {fieldError("projectCode")}
           </label>
           <label>
             專案說明
@@ -480,7 +635,9 @@ export function SettingsPanel({
               disabled={!settings.canManage}
               placeholder="專案目標、範圍與協作原則"
               maxLength={1000}
+              {...fieldA11y("projectDescription")}
             />
+            {fieldError("projectDescription")}
           </label>
         </section>
         <section className="settings-card settings-document-sync">
@@ -503,10 +660,20 @@ export function SettingsPanel({
           <h2>外觀與配色</h2>
           <p className="hint">主題與配色只儲存在目前瀏覽器。</p>
           <div className="theme-options">
-            <button type="button" onClick={() => setTheme("light")}>
+            <button
+              type="button"
+              className={theme === "light" ? "active" : ""}
+              aria-pressed={theme === "light"}
+              onClick={() => setTheme("light")}
+            >
               ☀ 淺色模式
             </button>
-            <button type="button" onClick={() => setTheme("dark")}>
+            <button
+              type="button"
+              className={theme === "dark" ? "active" : ""}
+              aria-pressed={theme === "dark"}
+              onClick={() => setTheme("dark")}
+            >
               ◐ 暗色模式
             </button>
           </div>
@@ -518,6 +685,7 @@ export function SettingsPanel({
                   type="button"
                   key={preset}
                   className={appearance.preset === preset ? "active" : ""}
+                  aria-pressed={appearance.preset === preset}
                   onClick={() => selectPreset(preset)}
                 >
                   <i style={{ background: accentPresets[preset].primary }} />
@@ -596,9 +764,13 @@ export function SettingsPanel({
               type="number"
               min="1"
               max="720"
+              step="1"
               defaultValue={settings.backup.intervalHours}
               disabled={!settings.canManageHost}
+              required={settings.canManageHost}
+              {...fieldA11y("backupIntervalHours")}
             />
+            {fieldError("backupIntervalHours")}
           </label>
           <label>
             保留天數
@@ -607,9 +779,13 @@ export function SettingsPanel({
               type="number"
               min="1"
               max="3650"
+              step="1"
               defaultValue={settings.backup.retentionDays}
               disabled={!settings.canManageHost}
+              required={settings.canManageHost}
+              {...fieldA11y("backupRetentionDays")}
             />
+            {fieldError("backupRetentionDays")}
           </label>
           <p className="hint">最近成功：{settings.backup.lastSuccess || "尚未完成"}</p>
           {settings.backup.lastFailure && (
@@ -656,9 +832,13 @@ export function SettingsPanel({
               type="number"
               min="8"
               max="128"
+              step="1"
               defaultValue={settings.security.minimumPasswordLength}
               disabled={!settings.canManage}
+              required={settings.canManage}
+              {...fieldA11y("minimumPasswordLength")}
             />
+            {fieldError("minimumPasswordLength")}
           </label>
           <label>
             登入失敗上限
@@ -667,9 +847,13 @@ export function SettingsPanel({
               type="number"
               min="1"
               max="30"
+              step="1"
               defaultValue={settings.security.loginMaxAttempts}
               disabled={!settings.canManage || !settings.security.loginRateLimitEnabled}
+              required={settings.canManage && settings.security.loginRateLimitEnabled}
+              {...fieldA11y("loginMaxAttempts")}
             />
+            {fieldError("loginMaxAttempts")}
           </label>
           <label>
             登入限制視窗（分鐘）
@@ -678,9 +862,13 @@ export function SettingsPanel({
               type="number"
               min="1"
               max="1440"
+              step="1"
               defaultValue={settings.security.loginWindowMinutes}
               disabled={!settings.canManage || !settings.security.loginRateLimitEnabled}
+              required={settings.canManage && settings.security.loginRateLimitEnabled}
+              {...fieldA11y("loginWindowMinutes")}
             />
+            {fieldError("loginWindowMinutes")}
           </label>
         </section>
         <section className="settings-card settings-security">
@@ -707,10 +895,12 @@ export function SettingsPanel({
               name="aiProvider"
               defaultValue={settings.ai.provider}
               disabled={!settings.canManage}
+              {...fieldA11y("aiProvider")}
             >
               <option value="OPENAI_COMPATIBLE">OpenAI-compatible API</option>
               <option value="OLLAMA">Ollama</option>
             </select>
+            {fieldError("aiProvider")}
           </label>
           <label>
             服務網址
@@ -719,7 +909,10 @@ export function SettingsPanel({
               defaultValue={settings.ai.baseUrl}
               disabled={!settings.canManage}
               placeholder="例如 http://ollama:11434 或 https://api.openai.com/v1"
+              maxLength={2000}
+              {...fieldA11y("aiBaseUrl")}
             />
+            {fieldError("aiBaseUrl")}
           </label>
           <label>
             模型
@@ -728,7 +921,10 @@ export function SettingsPanel({
               defaultValue={settings.ai.model}
               disabled={!settings.canManage}
               placeholder="例如 gpt-4.1-mini 或 llama3.2"
+              maxLength={200}
+              {...fieldA11y("aiModel")}
             />
+            {fieldError("aiModel")}
           </label>
           <label>
             API 金鑰
@@ -742,7 +938,10 @@ export function SettingsPanel({
                   ? "已設定；留白會保留原金鑰"
                   : "可留白（Ollama 通常不需要）"
               }
+              maxLength={10000}
+              {...fieldA11y("aiApiKey")}
             />
+            {fieldError("aiApiKey")}
           </label>
         </section>
         <section className="settings-card settings-security">
@@ -770,7 +969,10 @@ export function SettingsPanel({
               defaultValue={settings.integrations.githubRepository}
               disabled={!settings.canManage}
               placeholder="owner/repository"
+              maxLength={200}
+              {...fieldA11y("githubRepository")}
             />
+            {fieldError("githubRepository")}
           </label>
           <label>
             GitHub Token
@@ -784,7 +986,10 @@ export function SettingsPanel({
                   ? "已設定；留白會保留 Token"
                   : "公開儲存庫可留白"
               }
+              maxLength={10000}
+              {...fieldA11y("githubToken")}
             />
+            {fieldError("githubToken")}
           </label>
           <label className="security-toggle">
             <input
@@ -806,7 +1011,10 @@ export function SettingsPanel({
               defaultValue={settings.integrations.webhookUrl}
               disabled={!settings.canManage}
               placeholder="https://example.com/hooks/rocket"
+              maxLength={2000}
+              {...fieldA11y("webhookUrl")}
             />
+            {fieldError("webhookUrl")}
           </label>
           <label>
             Webhook 密鑰
@@ -820,18 +1028,22 @@ export function SettingsPanel({
                   ? "已設定；留白會保留密鑰"
                   : "可留白"
               }
+              maxLength={10000}
+              {...fieldA11y("webhookSecret")}
             />
+            {fieldError("webhookSecret")}
           </label>
         </section>
         <div className="settings-save">
           {settings.canManage ? (
-            <button className="primary" disabled={saving}>
-              {saving ? "儲存中…" : "儲存全部設定"}
+            <button className="primary" disabled={saving} aria-busy={saving}>
+              {saving && <span className="button-spinner" aria-hidden="true" />}
+              儲存全部設定
             </button>
           ) : (
             <p className="hint">你有檢視權限；請由工作空間管理員修改設定。</p>
           )}
-          {notice && <StatusMessage>{notice}</StatusMessage>}
+          {notice && <StatusMessage tone={noticeTone}>{notice}</StatusMessage>}
         </div>
       </form>
       {settings.canManage && (

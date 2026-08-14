@@ -15,6 +15,7 @@ const priorityLabel: Record<number, string> = {
 export function MyWorkPanel({
   tasks,
   editable,
+  currentWorkspaceId,
   currentProjectId,
   onOpenTask,
   onTaskUpdated,
@@ -24,6 +25,7 @@ export function MyWorkPanel({
 }: {
   tasks: MyTask[];
   editable: boolean;
+  currentWorkspaceId: string;
   currentProjectId: string;
   onOpenTask: (task: MyTask) => void;
   onTaskUpdated: (task: MyTask) => void;
@@ -122,6 +124,7 @@ export function MyWorkPanel({
               status: "",
               priority: 3,
               dueDate: null,
+              workspaceId: currentWorkspaceId,
               projectId: currentProjectId,
               projectName: "",
               projectCode: "",
