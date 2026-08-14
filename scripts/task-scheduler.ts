@@ -9,6 +9,8 @@ const intervalMs = Math.max(
   60_000,
   Number(process.env.TASK_SCHEDULER_INTERVAL_MS || 300_000),
 );
+const retryIntervalMs = Math.min(intervalMs, 15_000);
+
 async function tick() {
   try {
     const [result, documentSync, databaseImports, attachmentSync, rollupCache] =
@@ -30,9 +32,16 @@ async function tick() {
         rollupCache,
       }),
     );
+    return true;
   } catch (error) {
     console.error("task-scheduler failed", error);
+    return false;
   }
 }
-void tick();
-setInterval(() => void tick(), intervalMs);
+
+async function run() {
+  const completed = await tick();
+  setTimeout(() => void run(), completed ? intervalMs : retryIntervalMs);
+}
+
+void run();
