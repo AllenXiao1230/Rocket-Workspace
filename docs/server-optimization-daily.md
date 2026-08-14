@@ -45,6 +45,18 @@ sudo journalctl -p warning..alert --since yesterday --no-pager
 - swap 超過 90% 或 Monit 來信：記錄當下的記憶體排行與 `vmstat`；不要直接執行 `swapoff`。
 - 出現新的 warning 或 alert：先判斷是否為舊事件、已知設定訊息或真正故障。
 
+## GitHub Actions 部署恢復
+
+部署 workflow 只會部署 `main`。若 production checkout 意外停在其他分支，workflow 會先從 `origin/main` 取回 bootstrap，並且只在已追蹤檔案乾淨時切回 `main`；這不會觸碰未納入 Git 的 `.env` 或資料目錄。若部署仍因 checkout 中止，先在主機確認：
+
+```bash
+cd /srv/rocket-workspace
+git branch --show-current
+git status --short
+```
+
+不要在有已追蹤變更時強制切換分支；先確認、提交、stash 或還原該變更，再重新執行 GitHub Actions deployment。
+
 ## 每週檢查（週一）
 
 ```bash

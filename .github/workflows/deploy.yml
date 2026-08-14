@@ -83,7 +83,15 @@ jobs:
           printf '%s\n' "$DEPLOY_KNOWN_HOSTS" > ~/.ssh/known_hosts
           deploy_port="${DEPLOY_PORT:-22}"
           remote_path="$(printf '%q' "$DEPLOY_PATH")"
+          remote_command="$(cat <<EOF
+          set -Eeuo pipefail
+          git -C $remote_path fetch --prune origin main
+          git -C $remote_path show origin/main:scripts/prepare-deploy-checkout.sh | bash -s -- $remote_path main
+          cd $remote_path
+          DEPLOY_BRANCH=main ./scripts/deploy-from-github.sh
+          EOF
+          )"
           ssh -i ~/.ssh/id_ed25519 -p "$deploy_port" \
             -o BatchMode=yes -o StrictHostKeyChecking=yes \
             "$DEPLOY_USER@$DEPLOY_HOST" \
-            "cd $remote_path && DEPLOY_BRANCH=main ./scripts/deploy-from-github.sh"
+            "$remote_command"
